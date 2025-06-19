@@ -62,10 +62,14 @@ const QuotationPage = () => {
     setOpenInvoiceEditModal(false);
   };
 
+
+
+
   const handleAddItem = () => {
     const amount = newItem.quantity * newItem.price;
 
     if (editingRowId !== null) {
+      // Update existing row
       setRows((prev) =>
         prev.map((row) =>
           row.id === editingRowId
@@ -74,22 +78,23 @@ const QuotationPage = () => {
                 description: newItem.description,
                 quantity: newItem.quantity,
                 price: newItem.price,
-                amount,
+                amount: amount,
               }
             : row
         )
       );
       setEditingRowId(null);
     } else {
-      setRows([
-        ...rows,
+      // Add new row
+      setRows((prev) => [
+        ...prev,
         {
-          id: rows.length + 1,
-          sNo: rows.length + 1,
+          id: prev.length > 0 ? Math.max(...prev.map((r) => r.id)) + 1 : 1,
+          sNo: prev.length + 1,
           description: newItem.description,
           quantity: newItem.quantity,
           price: newItem.price,
-          amount,
+          amount: amount,
         },
       ]);
     }
@@ -98,7 +103,8 @@ const QuotationPage = () => {
     setOpenAddModal(false);
   };
 
-  const handleEdit = (row) => {
+  const handleEdit = (params) => {
+    const row = params.row;
     setEditingRowId(row.id);
     setNewItem({
       description: row.description,
@@ -445,16 +451,22 @@ const QuotationPage = () => {
       {/* Modal: Add/Edit Item */}
       <Dialog
         open={openAddModal}
-        onClose={() => setOpenAddModal(false)}
+        onClose={() => {
+          setOpenAddModal(false);
+          setEditingRowId(null); // Reset editing state when closing
+          setNewItem({ description: "", quantity: 0, price: 0 }); // Reset form
+        }}
         PaperProps={{
           sx: {
-            width: "600px", // Adjust width as needed
-            height: "400px", // Adjust height as needed
+            width: "600px",
+            height: "400px",
             padding: 2,
           },
         }}
       >
-        <DialogTitle>{editingRowId ? "Edit Item" : "Add Item"}</DialogTitle>
+        <DialogTitle>
+          {editingRowId !== null ? "Edit Item" : "Add Item"}
+        </DialogTitle>
         <DialogContent
           sx={{
             display: "flex",

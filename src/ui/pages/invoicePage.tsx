@@ -45,7 +45,7 @@ const InvoicePage = () => {
     invoiceNumber: "",
     date: "",
     shop: "SZ SIGNAGE",
-    format:"INVOICE"
+    format: "INVOICE",
   });
 
   const [newItem, setNewItem] = useState({
@@ -62,51 +62,6 @@ const InvoicePage = () => {
     setOpenInvoiceEditModal(false);
   };
 
-  const handleAddItem = () => {
-    const amount = newItem.quantity * newItem.price;
-
-    if (editingRowId !== null) {
-      setRows((prev) =>
-        prev.map((row) =>
-          row.id === editingRowId
-            ? {
-                ...row,
-                description: newItem.description,
-                quantity: newItem.quantity,
-                price: newItem.price,
-                amount,
-              }
-            : row
-        )
-      );
-      setEditingRowId(null);
-    } else {
-      setRows([
-        ...rows,
-        {
-          id: rows.length + 1,
-          sNo: rows.length + 1,
-          description: newItem.description,
-          quantity: newItem.quantity,
-          price: newItem.price,
-          amount,
-        },
-      ]);
-    }
-
-    setNewItem({ description: "", quantity: 0, price: 0 });
-    setOpenAddModal(false);
-  };
-
-  const handleEdit = (row) => {
-    setEditingRowId(row.id);
-    setNewItem({
-      description: row.description,
-      quantity: row.quantity,
-      price: row.price,
-    });
-    setOpenAddModal(true);
-  };
 
   const handleDelete = (id) => {
     const updated = rows
@@ -192,6 +147,55 @@ const InvoicePage = () => {
   //   const totalAmount = rows.reduce((acc, item) => acc + item.amount, 0);
   //   generateInvoicePDF(rows, totalAmount, invoiceData);
   // };
+
+  const handleAddItem = () => {
+    const amount = newItem.quantity * newItem.price;
+
+    if (editingRowId !== null) {
+      // Update existing row
+      setRows((prev) =>
+        prev.map((row) =>
+          row.id === editingRowId
+            ? {
+                ...row,
+                description: newItem.description,
+                quantity: newItem.quantity,
+                price: newItem.price,
+                amount: amount,
+              }
+            : row
+        )
+      );
+      setEditingRowId(null);
+    } else {
+      // Add new row
+      setRows((prev) => [
+        ...prev,
+        {
+          id: prev.length > 0 ? Math.max(...prev.map((r) => r.id)) + 1 : 1,
+          sNo: prev.length + 1,
+          description: newItem.description,
+          quantity: newItem.quantity,
+          price: newItem.price,
+          amount: amount,
+        },
+      ]);
+    }
+
+    setNewItem({ description: "", quantity: 0, price: 0 });
+    setOpenAddModal(false);
+  };
+
+  const handleEdit = (params) => {
+    const row = params.row;
+    setEditingRowId(row.id);
+    setNewItem({
+      description: row.description,
+      quantity: row.quantity,
+      price: row.price,
+    });
+    setOpenAddModal(true);
+  };
 
   return (
     <Box
@@ -469,16 +473,22 @@ const InvoicePage = () => {
       {/* Modal: Add/Edit Item */}
       <Dialog
         open={openAddModal}
-        onClose={() => setOpenAddModal(false)}
+        onClose={() => {
+          setOpenAddModal(false);
+          setEditingRowId(null); // Reset editing state when closing
+          setNewItem({ description: "", quantity: 0, price: 0 }); // Reset form
+        }}
         PaperProps={{
           sx: {
-            width: "600px", // Adjust width as needed
-            height: "400px", // Adjust height as needed
+            width: "600px",
+            height: "400px",
             padding: 2,
           },
         }}
       >
-        <DialogTitle>{editingRowId ? "Edit Item" : "Add Item"}</DialogTitle>
+        <DialogTitle>
+          {editingRowId !== null ? "Edit Item" : "Add Item"}
+        </DialogTitle>
         <DialogContent
           sx={{
             display: "flex",
