@@ -1,15 +1,16 @@
-import * as React from "react";
+
 import {
-  BrowserRouter as Router,
   Routes,
   Route,
   Link,
   useLocation,
+  BrowserRouter,
+  HashRouter,
 } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Drawer from "@mui/material/Drawer";
 import CssBaseline from "@mui/material/CssBaseline";
-import AppBar from "@mui/material/AppBar";
+
 import Toolbar from "@mui/material/Toolbar";
 import List from "@mui/material/List";
 import Typography from "@mui/material/Typography";
@@ -24,14 +25,15 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import InvoicePage from "./pages/InvoicePage";
 import QuotationPage from "./pages/QuotationPage";
 import SettingsPage from "./pages/settingsPage";
-
+const Router =
+  import.meta.env.MODE === "development" ? BrowserRouter : HashRouter;
 const drawerWidth = 240;
 
 // Sidebar navigation items
 const menuItems = [
   { text: "Invoice", path: "/", icon: <ReceiptIcon /> },
   { text: "Quotation", path: "/quotation", icon: <PaymentsIcon /> },
-  { text: "Settings", path: "/settings", icon: <SettingsIcon /> },
+  // { text: "Settings", path: "/settings", icon: <SettingsIcon /> },
 ];
 
 export default function CustomSidebar() {

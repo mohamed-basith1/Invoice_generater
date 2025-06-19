@@ -43,20 +43,37 @@ export const generateInvoicePDF = (items, totalAmount, fulldata) => {
   // Company Header
   doc.setFontSize(22);
   doc.setTextColor(255, 255, 255);
-  doc.text(fulldata.shop, 28, 22, { align: "left" });
-  doc.setFontSize(10);
-
-  doc.text("THE COMPLETE SOLUTION", 28, 27, {
+  doc.text(fulldata.shop, fulldata.shop === "SZ SIGNAGE" ? 28 : 37, 22, {
     align: "left",
   });
+  doc.setFontSize(10);
+
+  doc.text(
+    "THE COMPLETE SOLUTION",
+    fulldata.shop === "SZ SIGNAGE" ? 28 : 37,
+    27,
+    {
+      align: "left",
+    }
+  );
 
   //   doc.setTextColor(200, 200, 200);
   doc.setFontSize(8);
 
-  doc.text("AYYAMPET,THANJAVUR - 614201", 28, 32.5, {
-    align: "left",
-  });
-  doc.text("Tel: +91 9790343367", 28, 37, { align: "left" });
+  doc.text(
+    "AYYAMPET,THANJAVUR - 614201",
+    fulldata.shop === "SZ SIGNAGE" ? 28 : 37,
+    32.5,
+    {
+      align: "left",
+    }
+  );
+  doc.text(
+    "Tel: +91 9790343367",
+    fulldata.shop === "SZ SIGNAGE" ? 28 : 37,
+    37,
+    { align: "left" }
+  );
 
   // Invoice Title & Info
   doc.setTextColor(0, 0, 0);
@@ -187,7 +204,21 @@ export const generateInvoicePDF = (items, totalAmount, fulldata) => {
       align: "right",
     });
   }
+  if (fulldata.format === "INVOICE") {
+    doc.text("A/C NAME      :  UBAIYATHUL JIBRI", 11.5, 258, {
+      align: "left",
+    });
+    doc.text("BANK NAME  :  ICICI BANK", 11.5, 264, {
+      align: "left",
+    });
+    doc.text("A/C NO           :  000101628687", 11.5, 270, {
+      align: "left",
+    });
+    doc.text("IFSC NO         :  ICIC0000001", 11.5, 276, {
+      align: "left",
+    });
+  }
 
   // Save the PDF
-  doc.save(`Sticker_Zone_${fulldata.format}.pdf`);
+  doc.save(`${fulldata.shop}_${fulldata.format}.pdf`);
 };
