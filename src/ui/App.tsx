@@ -23,7 +23,7 @@ import ReceiptIcon from "@mui/icons-material/ReceiptOutlined";
 import PaymentsIcon from "@mui/icons-material/PaymentsOutlined";
 import SettingsIcon from "@mui/icons-material/Settings";
 import InvoicePage from "./pages/InvoicePage";
-import QuotationPage from "./pages/QuotationPage";
+import HistoryPage from "./pages/historyPage";
 import SettingsPage from "./pages/settingsPage";
 const Router =
   import.meta.env.MODE === "development" ? BrowserRouter : HashRouter;
@@ -31,8 +31,8 @@ const drawerWidth = 240;
 
 // Sidebar navigation items
 const menuItems = [
-  { text: "Invoice", path: "/", icon: <ReceiptIcon /> },
-  { text: "Quotation", path: "/quotation", icon: <PaymentsIcon /> },
+  { text: "Billing", path: "/", icon: <ReceiptIcon /> },
+  { text: "History", path: "/history", icon: <PaymentsIcon /> },
   // { text: "Settings", path: "/settings", icon: <SettingsIcon /> },
 ];
 
@@ -82,7 +82,7 @@ export default function CustomSidebar() {
 
         <Routes>
           <Route path="/" element={<InvoicePage />} />
-          <Route path="/quotation" element={<QuotationPage />} />
+          <Route path="/history" element={<HistoryPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </Box>

@@ -1,0 +1,13 @@
+# Root
+node_modules/
+
+# Client
+client/node_modules/
+
+# Server
+server/node_modules/
+
+
+jibriinvoice
+jibriinvoice123
+mongodb+srv://jibriinvoice:jibriinvoice123@cluster0.4u2zmpc.mongodb.net/

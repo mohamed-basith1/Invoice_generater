@@ -23,7 +23,7 @@ function formatDateToReadable(isoDateStr) {
   return `${day} ${month}, ${year}`;
 }
 
-export const generateInvoicePDF = (items, totalAmount, fulldata) => {
+export const generateInvoicePDF = (items, totalAmount, fulldata, layoutMode = "new") => {
   const doc = new jsPDF();
 
   doc.addImage(
@@ -40,6 +40,7 @@ export const generateInvoicePDF = (items, totalAmount, fulldata) => {
     210,
     297
   );
+
   // Company Header
   doc.setFontSize(22);
   doc.setTextColor(255, 255, 255);
@@ -57,9 +58,7 @@ export const generateInvoicePDF = (items, totalAmount, fulldata) => {
     }
   );
 
-  //   doc.setTextColor(200, 200, 200);
   doc.setFontSize(8);
-
   doc.text(
     "AYYAMPET,THANJAVUR - 614201",
     fulldata.shop === "SZ SIGNAGE" ? 28 : 37,
@@ -77,113 +76,165 @@ export const generateInvoicePDF = (items, totalAmount, fulldata) => {
 
   // Invoice Title & Info
   doc.setTextColor(0, 0, 0);
-  doc.setFontSize(40);
-  doc.text(fulldata.format, 14, 70);
+  doc.setFontSize(26);
+  doc.setFont("helvetica", "bold");
+  doc.text(fulldata.format, 14, 68);
 
-  doc.setFontSize(10);
-  doc.setTextColor(0, 0, 0);
-  doc.text(
-    fulldata.format === "INVOICE" ? `Invoice No : ` : `Quotation to : `,
-    14,
-    82
-  );
-  doc.setTextColor(177, 177, 177);
-  doc.text(
-    fulldata.format === "INVOICE"
-      ? `${fulldata.invoiceNumber}`
-      : `${fulldata.customerName}`,
-    38,
-    82
-  );
+  // Metadata Grid
+  doc.setFontSize(9);
+  
+  const printMeta = (label, value, xLabel, xVal, y) => {
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(50, 50, 50);
+    doc.text(label, xLabel, y);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 100, 100);
+    doc.text(value || "-", xVal, y);
+  };
 
-  if (fulldata.format === "INVOICE") {
-    doc.setTextColor(0, 0, 0);
-    doc.text("Bill To :", 14, 90);
-    doc.setTextColor(177, 177, 177);
-    doc.text(`${capitalizeWords(fulldata.customerName)}`, 38, 90);
-  }
+  const isInvoice = fulldata.format === "INVOICE";
+  printMeta(isInvoice ? "Invoice No:" : "Quotation No:", fulldata.invoiceNumber, 14, 42, 78);
+  printMeta("Customer:", capitalizeWords(fulldata.customerName), 14, 42, 84);
+  printMeta("Project Name:", fulldata.projectName, 14, 42, 90);
+  printMeta("Reference No:", fulldata.referenceNumber, 14, 42, 96);
+  printMeta("Invoice Type:", fulldata.invoiceType, 14, 42, 102);
 
-  doc.setTextColor(0, 0, 0);
-  doc.text(`Date : `, 165, 82, { align: "right" });
-  doc.setTextColor(177, 177, 177);
-  doc.text(`${formatDateToReadable(fulldata.date)}`, 195, 82, {
-    align: "right",
-  });
+  // Right column metadata
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(50, 50, 50);
+  doc.text("Date:", 145, 78);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 100, 100);
+  doc.text(formatDateToReadable(fulldata.date), 195, 78, { align: "right" });
+
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(50, 50, 50);
+  doc.text("Shop:", 145, 84);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 100, 100);
+  doc.text(fulldata.shop, 195, 84, { align: "right" });
 
   // Table Headers
-  const headers = [["S.NO", "DESCRIPTION", "QUANTITY", "PRICE", "AMOUNT"]];
+  const headers = layoutMode === "old"
+    ? [[
+        "S.NO",
+        "DESCRIPTION",
+        "QTY",
+        "RATE",
+        "AMOUNT"
+      ]]
+    : [[
+        "S.NO",
+        "DESCRIPTION",
+        "THICKNESS",
+        "SIZE",
+        "UNIT",
+        "AREA",
+        "TYPE",
+        "QTY",
+        "RATE",
+        "AMOUNT"
+      ]];
 
   // Table Rows
-  const rows = items.map((item) => [
-    item.sNo,
-    item.description,
-    item.quantity,
-    {
-      content: item.price.toLocaleString("en-IN", {
-        minimumFractionDigits: 2,
-      }),
-      styles: { halign: "right" },
-    },
-    {
-      content: item.amount.toLocaleString("en-IN", {
-        minimumFractionDigits: 2,
-      }),
-      styles: { halign: "right" },
-    },
-  ]);
+  const rows = items.map((item) => {
+    if (layoutMode === "old") {
+      return [
+        item.sNo,
+        item.description,
+        item.quantity ? item.quantity : "-",
+        {
+          content: (item.rate !== undefined ? item.rate : (item.price || 0)).toLocaleString("en-IN", {
+            minimumFractionDigits: 2,
+          }),
+          styles: { halign: "right" },
+        },
+        {
+          content: item.amount.toLocaleString("en-IN", {
+            minimumFractionDigits: 2,
+          }),
+          styles: { halign: "right" },
+        },
+      ];
+    } else {
+      return [
+        item.sNo,
+        item.description,
+        item.boardThickness || "-",
+        item.size || "-",
+        item.unit || "-",
+        item.area ? item.area : "-",
+        item.type || "-",
+        item.quantity ? item.quantity : "-",
+        {
+          content: (item.rate !== undefined ? item.rate : (item.price || 0)).toLocaleString("en-IN", {
+            minimumFractionDigits: 2,
+          }),
+          styles: { halign: "right" },
+        },
+        {
+          content: item.amount.toLocaleString("en-IN", {
+            minimumFractionDigits: 2,
+          }),
+          styles: { halign: "right" },
+        },
+      ];
+    }
+  });
 
-  // Max height for the first page (e.g., 150mm from startY)
-  const startY = 120;
-  const firstPageMaxHeight = 150;
-  const approximateRowHeight = 10; // Adjust based on your content
+  const startY = 110;
+  const firstPageMaxHeight = 140;
+  const approximateRowHeight = 10;
 
   // Calculate how many rows fit on the first page
   const rowsOnFirstPage = Math.floor(firstPageMaxHeight / approximateRowHeight);
   const firstPageRows = rows.slice(0, rowsOnFirstPage);
   const remainingRows = rows.slice(rowsOnFirstPage);
 
-  // First page table (with height restriction)
-  doc.autoTable({
+  const tableStyles = {
     head: headers,
-    body: firstPageRows,
-    startY: startY,
     theme: "grid",
-    styles: { fontSize: 8 },
+    styles: { fontSize: 7 },
     headStyles: {
-      fontSize: 8,
-      fillColor: [229, 229, 229],
-      textColor: [0, 0, 0],
+      fontSize: 7,
+      fillColor: [30, 30, 45],
+      textColor: [255, 255, 255],
     },
     columnStyles: {
-      3: { halign: "right" }, // PRICE
-      4: { halign: "right" }, // AMOUNT
+      0: { cellWidth: 10 },
+      1: { cellWidth: "auto" },
+      2: { cellWidth: 18 },
+      3: { cellWidth: 15 },
+      4: { cellWidth: 14 },
+      5: { cellWidth: 14 },
+      6: { cellWidth: 14 },
+      7: { cellWidth: 12 },
+      8: { cellWidth: 18, halign: "right" },
+      9: { cellWidth: 20, halign: "right" },
     },
+  };
+
+  // First page table
+  doc.autoTable({
+    ...tableStyles,
+    body: firstPageRows,
+    startY: startY,
   });
 
   // Add remaining rows to new pages (if any)
   if (remainingRows.length > 0) {
     doc.addPage();
     doc.autoTable({
-      head: headers,
+      ...tableStyles,
       body: remainingRows,
-      startY: 20, // Start lower on subsequent pages
-      theme: "grid",
-      styles: { fontSize: 8 },
-      headStyles: {
-        fontSize: 8,
-        fillColor: [229, 229, 229],
-        textColor: [0, 0, 0],
-      },
-      columnStyles: {
-        3: { halign: "right" }, // PRICE
-        4: { halign: "right" }, // AMOUNT
-      },
+      startY: 20,
     });
   }
 
   // Summary Section (on the last page)
   const finalY = doc.lastAutoTable.finalY + 10;
   doc.setTextColor(0, 0, 0);
+  doc.setFont("helvetica", "bold");
   doc.text(`Total`, 170, finalY, { align: "right" });
   doc.text(
     `${totalAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
@@ -192,9 +243,13 @@ export const generateInvoicePDF = (items, totalAmount, fulldata) => {
     { align: "right" }
   );
 
+  // Render bank details / quotation disclaimer on the first page to align with background templates
+  doc.setPage(1);
+
+  doc.setFont("helvetica", "normal");
   if (fulldata.format !== "INVOICE") {
     doc.setTextColor(255, 0, 0);
-    doc.setFontSize(15);
+    doc.setFontSize(13);
     doc.text("INSTALLATION AND TRANSPORT CHARGES ARE EXTRA", 176, 260, {
       align: "right",
     });
@@ -203,8 +258,9 @@ export const generateInvoicePDF = (items, totalAmount, fulldata) => {
     doc.text("THANK YOU FOR YOUR BUSINESS!", 139, 270, {
       align: "right",
     });
-  }
-  if (fulldata.format === "INVOICE") {
+  } else {
+    doc.setFontSize(9);
+    doc.setTextColor(0, 0, 0);
     doc.text("A/C NAME      :  UBAIYATHUL JIBRI", 11.5, 258, {
       align: "left",
     });
