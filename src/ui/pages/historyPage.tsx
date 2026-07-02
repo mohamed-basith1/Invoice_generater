@@ -52,8 +52,8 @@ const HistoryPage = () => {
   const [activeTab, setActiveTab] = useState(0);
   const [invoices, setInvoices] = useState<StoredInvoice[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [startDate, setStartDate] = useState<Dayjs | null>(null);
-  const [endDate, setEndDate] = useState<Dayjs | null>(null);
+  const [startDate, setStartDate] = useState<Dayjs | null>(dayjs());
+  const [endDate, setEndDate] = useState<Dayjs | null>(dayjs());
   const [documentType, setDocumentType] = useState<"ALL" | "INVOICE" | "QUOTATION">("ALL");
   const [loading, setLoading] = useState(false);
 
@@ -103,7 +103,8 @@ const HistoryPage = () => {
         params.endDate = endDate.endOf("day").toISOString();
       }
 
-      const response = await axios.get("http://localhost:5050/api/invoices", { params });
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5050";
+      const response = await axios.get(`${apiUrl}/api/invoices`, { params });
       setInvoices(response.data.invoices);
       setRowCount(response.data.totalCount);
       setTotalRevenue(response.data.totalRevenue);
@@ -121,7 +122,8 @@ const HistoryPage = () => {
   const handleDelete = async (id: string) => {
     if (window.confirm("Are you sure you want to permanently delete this record from history?")) {
       try {
-        await axios.delete(`http://localhost:5050/api/invoices/${id}`);
+        const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5050";
+        await axios.delete(`${apiUrl}/api/invoices/${id}`);
         fetchInvoices(); // Refresh the list from the database
       } catch (err) {
         console.error("Failed to delete record:", err);

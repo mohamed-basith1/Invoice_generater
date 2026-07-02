@@ -343,7 +343,8 @@ const InvoicePage = () => {
 
   const handleDownload = async () => {
     try {
-      const response = await axios.post("http://localhost:5050/api/invoices", {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5050";
+      const response = await axios.post(`${apiUrl}/api/invoices`, {
         ...invoiceData,
         layoutMode: isOldLayout ? "old" : "new",
         rows,
@@ -363,9 +364,16 @@ const InvoicePage = () => {
       }, isOldLayout ? "old" : "new");
     } catch (err) {
       console.error("Failed to save invoice to MongoDB:", err);
-      setToastMessage("Failed to save invoice to database. PDF download cancelled.");
+      setToastMessage("Failed to save invoice to database.");
       setToastSeverity("error");
       setToastOpen(true);
+
+      const confirmDownload = window.confirm(
+        "Warning: Failed to save the invoice to the database. This transaction will NOT be saved to your history. Do you want to download the PDF anyway?"
+      );
+      if (confirmDownload) {
+        generateInvoicePDF(rows, totalAmount, invoiceData, isOldLayout ? "old" : "new");
+      }
     }
   };
 
