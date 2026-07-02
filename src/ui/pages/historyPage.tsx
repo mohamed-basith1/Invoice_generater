@@ -12,6 +12,11 @@ import {
   TextField,
   Typography,
   Grid,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
 } from "@mui/material";
 import { DataGrid, GridColDef } from "@mui/x-data-grid";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -20,6 +25,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import SearchIcon from "@mui/icons-material/Search";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import PaymentsIcon from "@mui/icons-material/Payments";
 import { useEffect, useState, useMemo } from "react";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
@@ -27,6 +33,7 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import dayjs, { Dayjs } from "dayjs";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import * as XLSX from "xlsx";
 import { generateInvoicePDF } from "../utils/printer";
 
 interface StoredInvoice {
@@ -41,6 +48,8 @@ interface StoredInvoice {
   format: string; // "INVOICE" or "QUOTATION"
   rows: any[];
   totalAmount: number;
+  paidAmount?: number;
+  paymentStatus?: string;
 }
 
 const formatCurrency = (value: number) =>
@@ -58,6 +67,7 @@ const HistoryPage = () => {
   const [startDate, setStartDate] = useState<Dayjs | null>(dayjs());
   const [endDate, setEndDate] = useState<Dayjs | null>(dayjs());
   const [documentType, setDocumentType] = useState<"ALL" | "INVOICE" | "QUOTATION">("ALL");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<"ALL" | "UNPAID" | "PARTIALLY PAID" | "FULLY PAID">("ALL");
   const [loading, setLoading] = useState(false);
 
   // Pagination & Server-side filtering states
@@ -65,7 +75,14 @@ const HistoryPage = () => {
   const [pageSize, setPageSize] = useState(10);
   const [rowCount, setRowCount] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(0);
+  const [totalPaid, setTotalPaid] = useState(0);
+  const [totalBalance, setTotalBalance] = useState(0);
   const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  // Quick Pay Modal State
+  const [quickPayOpen, setQuickPayOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<StoredInvoice | null>(null);
+  const [quickPayAmount, setQuickPayAmount] = useState<number | "">("");
 
   // Debounce search input to avoid hitting backend on every keystroke
   useEffect(() => {
@@ -78,7 +95,7 @@ const HistoryPage = () => {
   // Reset page to first page when query filters change
   useEffect(() => {
     setPage(0);
-  }, [activeTab, documentType, debouncedSearch, startDate, endDate]);
+  }, [activeTab, documentType, paymentStatusFilter, debouncedSearch, startDate, endDate]);
 
   // Fetch paginated invoices from backend
   const fetchInvoices = async () => {
@@ -92,6 +109,10 @@ const HistoryPage = () => {
 
       if (documentType !== "ALL") {
         params.format = documentType;
+      }
+
+      if (paymentStatusFilter !== "ALL") {
+        params.paymentStatus = paymentStatusFilter;
       }
 
       if (debouncedSearch.trim()) {
@@ -111,6 +132,8 @@ const HistoryPage = () => {
       setInvoices(response.data.invoices);
       setRowCount(response.data.totalCount);
       setTotalRevenue(response.data.totalRevenue);
+      setTotalPaid(response.data.totalPaid || 0);
+      setTotalBalance(response.data.totalBalance || 0);
     } catch (err) {
       console.error("Error fetching invoice history:", err);
     } finally {
@@ -120,7 +143,7 @@ const HistoryPage = () => {
 
   useEffect(() => {
     fetchInvoices();
-  }, [page, pageSize, activeTab, documentType, debouncedSearch, startDate, endDate]);
+  }, [page, pageSize, activeTab, documentType, paymentStatusFilter, debouncedSearch, startDate, endDate]);
 
   const handleDelete = async (id: string) => {
     if (window.confirm("Are you sure you want to permanently delete this record from history?")) {
@@ -132,6 +155,132 @@ const HistoryPage = () => {
         console.error("Failed to delete record:", err);
         alert("Failed to delete the record from database.");
       }
+    }
+  };
+
+  const handleQuickPaySave = async () => {
+    if (!selectedInvoice) return;
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5050";
+      await axios.put(`${apiUrl}/api/invoices/${selectedInvoice._id}`, {
+        ...selectedInvoice,
+        paidAmount: Number(quickPayAmount || 0)
+      });
+      setQuickPayOpen(false);
+      setSelectedInvoice(null);
+      fetchInvoices(); // Refresh the list
+    } catch (err) {
+      console.error("Failed to update payment amount:", err);
+      alert("Failed to update the payment amount.");
+    }
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      const params: any = {
+        shop: activeTab === 0 ? "SZ SIGNAGE" : "STICKER ZONE",
+        page: 1,
+        limit: 100000, // retrieve all matching records
+      };
+
+      if (documentType !== "ALL") {
+        params.format = documentType;
+      }
+
+      if (paymentStatusFilter !== "ALL") {
+        params.paymentStatus = paymentStatusFilter;
+      }
+
+      if (debouncedSearch.trim()) {
+        params.search = debouncedSearch;
+      }
+
+      if (startDate) {
+        params.startDate = startDate.startOf("day").toISOString();
+      }
+
+      if (endDate) {
+        params.endDate = endDate.endOf("day").toISOString();
+      }
+
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5050";
+      const response = await axios.get(`${apiUrl}/api/invoices`, { params });
+      const exportInvoices: StoredInvoice[] = response.data.invoices || [];
+
+      if (exportInvoices.length === 0) {
+        alert("No records found to export.");
+        return;
+      }
+
+      // Prepare headers
+      const headers = [
+        "Document No",
+        "Date",
+        "Customer Name",
+        "Project Name",
+        "Reference No",
+        "Shop Office",
+        "Document Type",
+        "Total Amount (INR)",
+        "Paid Amount (INR)",
+        "Balance Outstanding (INR)",
+        "Payment Status"
+      ];
+
+      // Prepare data rows
+      const dataRows = exportInvoices.map((inv) => {
+        const total = inv.totalAmount || 0;
+        const paid = inv.paidAmount || 0;
+        const balance = total - paid;
+        const status = inv.paymentStatus || "UNPAID";
+
+        return [
+          inv.invoiceNumber,
+          dayjs(inv.date).format("YYYY-MM-DD"),
+          inv.customerName,
+          inv.projectName || "",
+          inv.referenceNumber || "",
+          inv.shop,
+          inv.format,
+          total,
+          paid,
+          balance,
+          status
+        ];
+      });
+
+      // Combine headers and rows
+      const sheetData = [headers, ...dataRows];
+
+      // Create Worksheet
+      const worksheet = XLSX.utils.aoa_to_sheet(sheetData);
+
+      // Set column widths to look polished
+      const colWidths = [
+        { wch: 18 }, // Document No
+        { wch: 12 }, // Date
+        { wch: 25 }, // Customer Name
+        { wch: 20 }, // Project Name
+        { wch: 15 }, // Reference No
+        { wch: 18 }, // Shop Office
+        { wch: 15 }, // Document Type
+        { wch: 18 }, // Total Amount
+        { wch: 12 }, // Paid Amount
+        { wch: 25 }, // Balance Outstanding
+        { wch: 15 }  // Payment Status
+      ];
+      worksheet["!cols"] = colWidths;
+
+      // Create Workbook
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Billing Records");
+
+      // Generate file and trigger download
+      const filename = `${params.shop.replace(/\s+/g, "_")}_Export_${dayjs().format("YYYY-MM-DD")}.xlsx`;
+      XLSX.writeFile(workbook, filename);
+    } catch (err) {
+      console.error("Failed to export invoices to Excel:", err);
+      alert("Failed to export data to Excel.");
     }
   };
 
@@ -172,19 +321,86 @@ const HistoryPage = () => {
     {
       field: "totalAmount",
       headerName: "Total Amount",
-      width: 140,
+      width: 120,
       align: "right",
       headerAlign: "right",
       valueFormatter: (value: any) => formatCurrency(Number(value || 0)),
     },
     {
+      field: "paidAmount",
+      headerName: "Paid",
+      width: 120,
+      align: "right",
+      headerAlign: "right",
+      valueFormatter: (value: any) => formatCurrency(Number(value || 0)),
+    },
+    {
+      field: "balance",
+      headerName: "Balance",
+      width: 120,
+      align: "right",
+      headerAlign: "right",
+      renderCell: (params) => {
+        const row = params.row as StoredInvoice;
+        const balance = row.totalAmount - (row.paidAmount || 0);
+        return (
+          <span style={{ color: balance > 0 ? "#d32f2f" : "#2e7d32", fontWeight: "bold" }}>
+            {formatCurrency(balance)}
+          </span>
+        );
+      }
+    },
+    {
+      field: "paymentStatus",
+      headerName: "Status",
+      width: 130,
+      renderCell: (params) => {
+        const value = params.value || "UNPAID";
+        let color = "#d32f2f"; // red for UNPAID
+        let bgColor = "#ffebee";
+        if (value === "FULLY PAID") {
+          color = "#2e7d32"; // green
+          bgColor = "#e8f5e9";
+        } else if (value === "PARTIALLY PAID") {
+          color = "#ef6c00"; // orange
+          bgColor = "#fff3e0";
+        }
+        return (
+          <span
+            style={{
+              color,
+              backgroundColor: bgColor,
+              padding: "4px 8px",
+              borderRadius: "12px",
+              fontSize: "12px",
+              fontWeight: "bold",
+              textTransform: "uppercase",
+              display: "inline-block",
+            }}
+          >
+            {value}
+          </span>
+        );
+      }
+    },
+    {
       field: "actions",
       headerName: "Actions",
-      width: 135,
+      width: 170,
       renderCell: (params) => {
         const row = params.row as StoredInvoice;
         return (
           <Box display="flex" gap={0.5}>
+            <IconButton
+              onClick={() => {
+                setSelectedInvoice(row);
+                setQuickPayAmount(row.paidAmount || 0);
+                setQuickPayOpen(true);
+              }}
+              title="Update Payment"
+            >
+              <PaymentsIcon color="warning" fontSize="small" />
+            </IconButton>
             <IconButton
               onClick={() => navigate(`/?edit=${row._id}`)}
               title="Edit Record"
@@ -270,8 +486,62 @@ const HistoryPage = () => {
           </Card>
         </Grid>
 
+        <Grid item xs={12} md={4}>
+          <Card
+            sx={{
+              borderRadius: 3,
+              boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
+              border: "1px solid #e0e0e0",
+              background: "linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%)",
+              color: "white",
+            }}
+          >
+            <CardContent>
+              <Box display="flex" justifyContent="space-between" alignItems="center">
+                <Typography variant="subtitle2" sx={{ opacity: 0.8, fontWeight: "bold" }}>
+                  TOTAL COLLECTED
+                </Typography>
+                <TrendingUpIcon sx={{ color: "#a5d6a7" }} />
+              </Box>
+              <Typography variant="h4" fontWeight="bold" sx={{ mt: 1.5, mb: 0.5 }}>
+                {formatCurrency(totalPaid)}
+              </Typography>
+              <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                Total amount received matching filters
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={4}>
+          <Card
+            sx={{
+              borderRadius: 3,
+              boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
+              border: "1px solid #e0e0e0",
+              background: "linear-gradient(135deg, #c62828 0%, #b71c1c 100%)",
+              color: "white",
+            }}
+          >
+            <CardContent>
+              <Box display="flex" justifyContent="space-between" alignItems="center">
+                <Typography variant="subtitle2" sx={{ opacity: 0.8, fontWeight: "bold" }}>
+                  OUTSTANDING DUES
+                </Typography>
+                <TrendingUpIcon sx={{ color: "#ff8a80" }} />
+              </Box>
+              <Typography variant="h4" fontWeight="bold" sx={{ mt: 1.5, mb: 0.5 }}>
+                {formatCurrency(totalBalance)}
+              </Typography>
+              <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                Total balance pending collection
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
         {/* Dashboard Filters Toolbar */}
-        <Grid item xs={12} md={8}>
+        <Grid item xs={12}>
           <Card
             sx={{
               borderRadius: 3,
@@ -284,9 +554,20 @@ const HistoryPage = () => {
               gap: 2,
             }}
           >
-            <Typography variant="subtitle2" color="text.secondary" fontWeight="bold">
-              SEARCH & DATE FILTERS
-            </Typography>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Typography variant="subtitle2" color="text.secondary" fontWeight="bold">
+                SEARCH & DATE FILTERS
+              </Typography>
+              <Button
+                variant="outlined"
+                color="success"
+                startIcon={<DownloadIcon />}
+                onClick={handleExportExcel}
+                sx={{ textTransform: "none", fontWeight: "bold" }}
+              >
+                Export Excel
+              </Button>
+            </Box>
             <Box display="flex" gap={2} flexWrap="wrap">
               <Box flex={2} minWidth="200px">
                 <TextField
@@ -313,6 +594,23 @@ const HistoryPage = () => {
                     <MenuItem value="ALL">All Documents</MenuItem>
                     <MenuItem value="INVOICE">Invoices</MenuItem>
                     <MenuItem value="QUOTATION">Quotations</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+
+              <Box flex={1} minWidth="160px">
+                <FormControl fullWidth>
+                  <InputLabel id="history-status-label">Payment Status</InputLabel>
+                  <Select
+                    labelId="history-status-label"
+                    label="Payment Status"
+                    value={paymentStatusFilter}
+                    onChange={(e) => setPaymentStatusFilter(e.target.value as any)}
+                  >
+                    <MenuItem value="ALL">All Payments</MenuItem>
+                    <MenuItem value="UNPAID">Unpaid</MenuItem>
+                    <MenuItem value="PARTIALLY PAID">Partially Paid</MenuItem>
+                    <MenuItem value="FULLY PAID">Fully Paid</MenuItem>
                   </Select>
                 </FormControl>
               </Box>
@@ -387,6 +685,75 @@ const HistoryPage = () => {
           }}
         />
       </Box>
+
+      {/* Modal: Quick Pay / Update Payment */}
+      <Dialog
+        open={quickPayOpen}
+        onClose={() => {
+          setQuickPayOpen(false);
+          setSelectedInvoice(null);
+        }}
+        PaperProps={{
+          sx: {
+            width: "450px",
+            borderRadius: 3,
+            padding: 1.5,
+          },
+        }}
+      >
+        <DialogTitle fontWeight="bold">Update Payment Details</DialogTitle>
+        <DialogContent
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 2.5,
+            paddingTop: 1.5,
+          }}
+        >
+          {selectedInvoice && (
+            <>
+              <Typography variant="body2" color="text.secondary">
+                Document Number: <strong>{selectedInvoice.invoiceNumber}</strong>
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Customer: <strong>{selectedInvoice.customerName}</strong>
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Total Invoice Value: <strong>{formatCurrency(selectedInvoice.totalAmount)}</strong>
+              </Typography>
+              <TextField
+                label="Paid Amount (INR)"
+                type="number"
+                fullWidth
+                value={quickPayAmount}
+                onChange={(e) => {
+                  const val = e.target.value === "" ? "" : parseFloat(e.target.value);
+                  setQuickPayAmount(val);
+                }}
+                helperText={`Outstanding Balance: ${formatCurrency(Math.max(0, selectedInvoice.totalAmount - Number(quickPayAmount || 0)))}`}
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => {
+              setQuickPayOpen(false);
+              setSelectedInvoice(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="success"
+            onClick={handleQuickPaySave}
+            disabled={quickPayAmount === ""}
+          >
+            Save Payment
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

@@ -36,6 +36,7 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import dayjs from "dayjs";
 import DynamicAutocomplete from "./AutosuggestionTextFields";
 import { generateInvoicePDF } from "../utils/printer";
+import * as XLSX from "xlsx";
 
 // Strong Interfaces
 export interface InvoiceItem {
@@ -61,6 +62,8 @@ export interface InvoiceData {
   shop: string;
   invoiceType: string;
   format: string; // "INVOICE" or "QUOTATION"
+  paidAmount?: number;
+  discount?: number;
 }
 
 interface NewItemState {
@@ -127,6 +130,8 @@ const InvoicePage = () => {
     shop: "SZ SIGNAGE",
     invoiceType: "Signage Work",
     format: "INVOICE",
+    paidAmount: 0,
+    discount: 0,
   });
 
   const [newItem, setNewItem] = useState<NewItemState>({
@@ -158,9 +163,16 @@ const InvoicePage = () => {
             shop: data.shop || "SZ SIGNAGE",
             invoiceType: data.invoiceType || "Signage Work",
             format: data.format || "INVOICE",
+            paidAmount: data.paidAmount || 0,
+            discount: data.discount || 0,
           });
           
-          setRows(data.rows || []);
+          setRows(
+            (data.rows || []).map((row: any, idx: number) => ({
+              ...row,
+              id: row.id || row._id || idx + 1,
+            }))
+          );
           setIsOldLayout(data.layoutMode === "old");
         } catch (err) {
           console.error("Failed to fetch invoice for editing:", err);
@@ -191,9 +203,13 @@ const InvoicePage = () => {
     setRows(updated);
   };
 
-  const totalAmount = useMemo(() => {
+  const subTotal = useMemo(() => {
     return rows.reduce((sum, row) => sum + row.amount, 0);
   }, [rows]);
+
+  const totalAmount = useMemo(() => {
+    return Math.max(0, subTotal - (invoiceData.discount || 0));
+  }, [subTotal, invoiceData.discount]);
 
   // Parser to auto calculate area from size (e.g. 3x5 or 3 * 5)
   const parseSizeToArea = (sizeStr: string): number | null => {
@@ -375,46 +391,237 @@ const InvoicePage = () => {
     ];
   }, [rows, isOldLayout]);
 
+  const saveInvoice = async (): Promise<any> => {
+    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5050";
+    if (editId) {
+      // Update existing invoice
+      const response = await axios.put(`${apiUrl}/api/invoices/${editId}`, {
+        ...invoiceData,
+        layoutMode: isOldLayout ? "old" : "new",
+        rows,
+        totalAmount,
+      });
+      return response.data;
+    } else {
+      // Create new invoice
+      const response = await axios.post(`${apiUrl}/api/invoices`, {
+        ...invoiceData,
+        layoutMode: isOldLayout ? "old" : "new",
+        rows,
+        totalAmount,
+      });
+      return response.data;
+    }
+  };
+
+  const generateInvoiceExcel = (currentRows: InvoiceItem[], currentInvoiceNumber: string) => {
+    // Construct the rows array (AOA) matching the Microsoft template layout exactly
+    const sheetData: any[][] = [];
+
+    // Row 1: Blank spacer row
+    sheetData.push([]);
+
+    // Row 2: Col C (index 2) has Format, Col H (index 7) has Shop Name
+    const row2 = Array(8).fill("");
+    row2[2] = invoiceData.format;
+    row2[7] = invoiceData.shop;
+    sheetData.push(row2);
+
+    // Row 3: Street Address
+    const row3 = Array(8).fill("");
+    row3[7] = "No 12, Main Street Road";
+    sheetData.push(row3);
+
+    // Row 4: City, State
+    const row4 = Array(8).fill("");
+    row4[7] = "Tamil Nadu, India";
+    sheetData.push(row4);
+
+    // Row 5: Phone
+    const row5 = Array(8).fill("");
+    row5[7] = "Phone: +91 XXXXX XXXXX";
+    sheetData.push(row5);
+
+    // Row 6: Email
+    const row6 = Array(8).fill("");
+    row6[7] = "Email: contact@stickerzone.in";
+    sheetData.push(row6);
+
+    // Row 7 & 8: Spacers
+    sheetData.push([]);
+    sheetData.push([]);
+
+    // Row 9: Bill To header label
+    const row9 = Array(8).fill("");
+    row9[7] = "Bill To";
+    sheetData.push(row9);
+
+    // Row 10: Invoice No & Customer Name
+    const row10 = Array(8).fill("");
+    row10[2] = invoiceData.format === "INVOICE" ? "Invoice No." : "Quotation No.";
+    row10[3] = currentInvoiceNumber || "DRAFT";
+    row10[7] = invoiceData.customerName;
+    sheetData.push(row10);
+
+    // Row 11: Date of issue & Project Name
+    const row11 = Array(8).fill("");
+    row11[2] = "Date of Issue";
+    row11[3] = invoiceData.date || dayjs().format("YYYY-MM-DD");
+    row11[7] = invoiceData.projectName ? `Project: ${invoiceData.projectName}` : "-";
+    sheetData.push(row11);
+
+    // Row 12: Reference No & Reference
+    const row12 = Array(8).fill("");
+    row12[2] = "Reference No";
+    row12[3] = invoiceData.referenceNumber || "-";
+    row12[7] = invoiceData.referenceNumber ? `Ref: ${invoiceData.referenceNumber}` : "-";
+    sheetData.push(row12);
+
+    // Row 13: Invoice Type
+    const row13 = Array(8).fill("");
+    row13[2] = "Invoice Type";
+    row13[3] = invoiceData.invoiceType || "-";
+    sheetData.push(row13);
+
+    // Row 14 & 15: Blank spacers
+    sheetData.push([]);
+    sheetData.push([]);
+
+    // Row 16: Headers starting at Col C (index 2)
+    let headers: string[];
+    if (isOldLayout) {
+      headers = ["Item", "Description", "Quantity", "Rate", "Amount"];
+    } else {
+      headers = [
+        "Item",
+        "Description",
+        "Thickness",
+        "Size",
+        "Unit",
+        "Area",
+        "Type",
+        "Quantity",
+        "Rate",
+        "Amount"
+      ];
+    }
+    sheetData.push(["", "", ...headers]);
+
+    // Row 17+: Items rows (Col C starts items list)
+    currentRows.forEach((item, index) => {
+      let itemValues: any[];
+      if (isOldLayout) {
+        itemValues = [
+          index + 1,
+          item.description,
+          item.quantity,
+          item.rate,
+          item.amount
+        ];
+      } else {
+        itemValues = [
+          index + 1,
+          item.description,
+          item.boardThickness || "-",
+          item.size || "-",
+          item.unit || "-",
+          item.area || 0,
+          item.type || "-",
+          item.quantity,
+          item.rate,
+          item.amount
+        ];
+      }
+      sheetData.push(["", "", ...itemValues]);
+    });
+
+    // Summary Offset setup
+    sheetData.push([]); // spacer row
+
+    const currentSubtotal = currentRows.reduce((sum, row) => sum + row.amount, 0);
+    const currentDiscount = invoiceData.discount || 0;
+    const currentTotal = Math.max(0, currentSubtotal - currentDiscount);
+    const currentPaid = invoiceData.paidAmount || 0;
+    const currentBalance = Math.max(0, currentTotal - currentPaid);
+
+    const valCol = isOldLayout ? 6 : 11; // Column G (index 6) or Column L (index 11)
+    const labelCol = valCol - 1;
+
+    const buildSummaryRow = (label: string, value: number) => {
+      const row = Array(valCol + 1).fill("");
+      row[labelCol] = label;
+      row[valCol] = value;
+      return row;
+    };
+
+    sheetData.push(buildSummaryRow("Subtotal", currentSubtotal));
+    sheetData.push(buildSummaryRow("Discount", currentDiscount));
+    sheetData.push(buildSummaryRow("Total", currentTotal));
+    sheetData.push(buildSummaryRow("Paid", currentPaid));
+    sheetData.push(buildSummaryRow("Balance Due", currentBalance));
+
+    // Bottom spacer and Thank You message
+    sheetData.push([]);
+    sheetData.push([]);
+    const thankYouRow = ["", "Thank you for your business!"];
+    sheetData.push(thankYouRow);
+
+    // Create Worksheet
+    const worksheet = XLSX.utils.aoa_to_sheet(sheetData);
+
+    // Columns width
+    const colWidths = isOldLayout
+      ? [
+          { wch: 4 },   // Col A
+          { wch: 4 },   // Col B
+          { wch: 8 },   // Col C (Item)
+          { wch: 40 },  // Col D (Description)
+          { wch: 12 },  // Col E (Quantity)
+          { wch: 15 },  // Col F (Rate)
+          { wch: 18 }   // Col G (Amount)
+        ]
+      : [
+          { wch: 4 },   // Col A
+          { wch: 4 },   // Col B
+          { wch: 8 },   // Col C (Item)
+          { wch: 40 },  // Col D (Description)
+          { wch: 15 },  // Col E (Thickness)
+          { wch: 12 },  // Col F (Size)
+          { wch: 10 },  // Col G (Unit)
+          { wch: 12 },  // Col H (Area)
+          { wch: 15 },  // Col I (Type)
+          { wch: 12 },  // Col J (Quantity)
+          { wch: 15 },  // Col K (Rate)
+          { wch: 18 }   // Col L (Amount)
+        ];
+    worksheet["!cols"] = colWidths;
+
+    // Create Workbook
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Timesheet invoice");
+
+    // Save and download
+    const filename = `${invoiceData.shop.replace(/\s+/g, "_")}_${currentInvoiceNumber || "DRAFT"}.xlsx`;
+    XLSX.writeFile(workbook, filename);
+  };
+
   const handleDownload = async () => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5050";
-      let savedDoc;
-
-      if (editId) {
-        // Update existing invoice
-        const response = await axios.put(`${apiUrl}/api/invoices/${editId}`, {
-          ...invoiceData,
-          layoutMode: isOldLayout ? "old" : "new",
-          rows,
-          totalAmount,
-        });
-        savedDoc = response.data;
-        setToastMessage("Invoice updated successfully!");
-      } else {
-        // Create new invoice
-        const response = await axios.post(`${apiUrl}/api/invoices`, {
-          ...invoiceData,
-          layoutMode: isOldLayout ? "old" : "new",
-          rows,
-          totalAmount,
-        });
-        savedDoc = response.data;
-        setToastMessage("Saved to database successfully!");
-      }
-
+      const savedDoc = await saveInvoice();
+      setToastMessage(editId ? "Invoice updated successfully!" : "Saved to database successfully!");
       setInvoiceData((prev) => ({
         ...prev,
         invoiceNumber: savedDoc.invoiceNumber,
       }));
       setToastSeverity("success");
       setToastOpen(true);
+      
       generateInvoicePDF(rows, totalAmount, {
         ...invoiceData,
         invoiceNumber: savedDoc.invoiceNumber,
       }, isOldLayout ? "old" : "new");
 
       if (editId) {
-        // Clear edit query param after successful save to return to creation mode
         setSearchParams({});
       }
     } catch (err) {
@@ -430,6 +637,39 @@ const InvoicePage = () => {
       );
       if (confirmDownload) {
         generateInvoicePDF(rows, totalAmount, invoiceData, isOldLayout ? "old" : "new");
+      }
+    }
+  };
+
+  const handleDownloadExcel = async () => {
+    try {
+      const savedDoc = await saveInvoice();
+      setToastMessage(editId ? "Invoice updated successfully!" : "Saved to database successfully!");
+      setInvoiceData((prev) => ({
+        ...prev,
+        invoiceNumber: savedDoc.invoiceNumber,
+      }));
+      setToastSeverity("success");
+      setToastOpen(true);
+      
+      generateInvoiceExcel(rows, savedDoc.invoiceNumber);
+
+      if (editId) {
+        setSearchParams({});
+      }
+    } catch (err) {
+      console.error("Failed to save invoice to MongoDB:", err);
+      setToastMessage(editId ? "Failed to update invoice in database." : "Failed to save invoice to database.");
+      setToastSeverity("error");
+      setToastOpen(true);
+
+      const confirmDownload = window.confirm(
+        editId
+          ? "Warning: Failed to update the invoice in the database. Do you want to download the Excel file anyway?"
+          : "Warning: Failed to save the invoice to the database. This transaction will NOT be saved to your history. Do you want to download the Excel file anyway?"
+      );
+      if (confirmDownload) {
+        generateInvoiceExcel(rows, invoiceData.invoiceNumber || "DRAFT");
       }
     }
   };
@@ -812,9 +1052,29 @@ const InvoicePage = () => {
           </FormControl>
         </Box>
         
-        <Box display="flex" alignItems="center" gap={4}>
+        <Box display="flex" alignItems="center" gap={3}>
+          <Typography variant="body1" fontWeight="bold" color="text.secondary">
+            Subtotal: <span style={{ color: "#1E1E2D" }}>{formatCurrency(subTotal)}</span>
+          </Typography>
+          <TextField
+            label="Discount"
+            type="number"
+            size="small"
+            sx={{ width: 100 }}
+            value={invoiceData.discount === 0 ? "" : invoiceData.discount}
+            onChange={(e) => {
+              const val = e.target.value === "" ? 0 : parseFloat(e.target.value);
+              setInvoiceData({ ...invoiceData, discount: val });
+            }}
+          />
           <Typography variant="h6" fontWeight="bold" sx={{ color: "text.primary" }}>
             Total: <span style={{ color: "#1E1E2D" }}>{formatCurrency(totalAmount)}</span>
+          </Typography>
+          <Typography variant="body1" fontWeight="bold" color="text.secondary">
+            Paid: <span style={{ color: "#2e7d32" }}>{formatCurrency(invoiceData.paidAmount || 0)}</span>
+          </Typography>
+          <Typography variant="body1" fontWeight="bold" color="text.secondary">
+            Balance: <span style={{ color: totalAmount - (invoiceData.paidAmount || 0) > 0 ? "#d32f2f" : "#2e7d32" }}>{formatCurrency(Math.max(0, totalAmount - (invoiceData.paidAmount || 0)))}</span>
           </Typography>
           {editId && (
             <Button
@@ -847,6 +1107,15 @@ const InvoicePage = () => {
             sx={{ px: 4, py: 1, borderRadius: 2, textTransform: "none", fontSize: "15px", fontWeight: "bold" }}
           >
             {editId ? "Update & Download PDF" : "Download PDF"}
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            disabled={rows.length === 0}
+            onClick={handleDownloadExcel}
+            sx={{ px: 4, py: 1, borderRadius: 2, textTransform: "none", fontSize: "15px", fontWeight: "bold" }}
+          >
+            {editId ? "Update & Download Excel" : "Download Excel"}
           </Button>
         </Box>
       </Box>
@@ -942,6 +1211,28 @@ const InvoicePage = () => {
               fullWidth
               value={invoiceData.invoiceType}
               onChange={(e) => setInvoiceData({ ...invoiceData, invoiceType: e.target.value })}
+            />
+          </Box>
+          <Box display="flex" gap={2}>
+            <TextField
+              label="Paid Amount (INR)"
+              type="number"
+              fullWidth
+              value={invoiceData.paidAmount === 0 ? "" : invoiceData.paidAmount}
+              onChange={(e) => {
+                const val = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                setInvoiceData({ ...invoiceData, paidAmount: val });
+              }}
+            />
+            <TextField
+              label="Discount (INR)"
+              type="number"
+              fullWidth
+              value={invoiceData.discount === 0 ? "" : invoiceData.discount}
+              onChange={(e) => {
+                const val = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                setInvoiceData({ ...invoiceData, discount: val });
+              }}
             />
           </Box>
         </DialogContent>
@@ -1044,6 +1335,28 @@ const InvoicePage = () => {
               fullWidth
               value={invoiceData.invoiceType}
               onChange={(e) => setInvoiceData({ ...invoiceData, invoiceType: e.target.value })}
+            />
+          </Box>
+          <Box display="flex" gap={2}>
+            <TextField
+              label="Paid Amount (INR)"
+              type="number"
+              fullWidth
+              value={invoiceData.paidAmount === 0 ? "" : invoiceData.paidAmount}
+              onChange={(e) => {
+                const val = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                setInvoiceData({ ...invoiceData, paidAmount: val });
+              }}
+            />
+            <TextField
+              label="Discount (INR)"
+              type="number"
+              fullWidth
+              value={invoiceData.discount === 0 ? "" : invoiceData.discount}
+              onChange={(e) => {
+                const val = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                setInvoiceData({ ...invoiceData, discount: val });
+              }}
             />
           </Box>
         </DialogContent>

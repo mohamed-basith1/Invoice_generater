@@ -44,6 +44,9 @@ const InvoiceSchema = new mongoose.Schema({
   invoiceType: String,
   format: { type: String, required: true },
   layoutMode: { type: String, default: "new" },
+  paidAmount: { type: Number, default: 0 },
+  discount: { type: Number, default: 0 },
+  paymentStatus: { type: String, enum: ["UNPAID", "PARTIALLY PAID", "FULLY PAID"], default: "UNPAID" },
   rows: [ItemSchema],
   totalAmount: { type: Number, required: true }
 }, { timestamps: true });
@@ -65,6 +68,8 @@ app.post('/api/invoices', async (req, res) => {
       invoiceType,
       format,
       layoutMode,
+      paidAmount,
+      discount,
       rows,
       totalAmount
     } = req.body;
@@ -86,6 +91,17 @@ app.post('/api/invoices', async (req, res) => {
       console.log("Assigned finalInvoiceNumber:", finalInvoiceNumber);
     }
 
+    const finalPaidAmount = paidAmount === undefined ? 0 : Number(paidAmount);
+    const finalDiscount = discount === undefined ? 0 : Number(discount);
+    let finalPaymentStatus = "UNPAID";
+    if (finalPaidAmount > 0) {
+      if (finalPaidAmount >= totalAmount) {
+        finalPaymentStatus = "FULLY PAID";
+      } else {
+        finalPaymentStatus = "PARTIALLY PAID";
+      }
+    }
+
     const newInvoice = new Invoice({
       customerName,
       invoiceNumber: finalInvoiceNumber,
@@ -96,6 +112,9 @@ app.post('/api/invoices', async (req, res) => {
       invoiceType,
       format,
       layoutMode: layoutMode || "new",
+      paidAmount: finalPaidAmount,
+      discount: finalDiscount,
+      paymentStatus: finalPaymentStatus,
       rows,
       totalAmount
     });
@@ -111,7 +130,7 @@ app.post('/api/invoices', async (req, res) => {
 // 2. Fetch all Invoices / Quotations with query filters & pagination
 app.get('/api/invoices', async (req, res) => {
   try {
-    const { shop, format, search, startDate, endDate, page = 1, limit = 10 } = req.query;
+    const { shop, format, search, startDate, endDate, paymentStatus, page = 1, limit = 10 } = req.query;
 
     const filter = {};
 
@@ -121,6 +140,10 @@ app.get('/api/invoices', async (req, res) => {
 
     if (format) {
       filter.format = format;
+    }
+
+    if (paymentStatus && paymentStatus !== "ALL") {
+      filter.paymentStatus = paymentStatus;
     }
 
     if (search) {
@@ -147,12 +170,20 @@ app.get('/api/invoices', async (req, res) => {
     // A. Count total matching documents
     const totalCount = await Invoice.countDocuments(filter);
 
-    // B. Calculate total revenue matching the filters (using aggregation)
+    // B. Calculate total revenue, paid, and balance matching the filters (using aggregation)
     const revenueResult = await Invoice.aggregate([
       { $match: filter },
-      { $group: { _id: null, totalRevenue: { $sum: "$totalAmount" } } }
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: "$totalAmount" },
+          totalPaid: { $sum: { $ifNull: ["$paidAmount", 0] } }
+        }
+      }
     ]);
     const totalRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
+    const totalPaid = revenueResult.length > 0 ? revenueResult[0].totalPaid : 0;
+    const totalBalance = totalRevenue - totalPaid;
 
     // C. Paginate invoices
     const pageNum = parseInt(page);
@@ -167,7 +198,9 @@ app.get('/api/invoices', async (req, res) => {
       totalCount,
       totalPages: Math.ceil(totalCount / limitNum),
       currentPage: pageNum,
-      totalRevenue
+      totalRevenue,
+      totalPaid,
+      totalBalance
     });
   } catch (error) {
     console.error('Error fetching invoices:', error);
@@ -206,9 +239,22 @@ app.put('/api/invoices/:id', async (req, res) => {
       invoiceType,
       format,
       layoutMode,
+      paidAmount,
+      discount,
       rows,
       totalAmount
     } = req.body;
+
+    const finalPaidAmount = paidAmount === undefined ? 0 : Number(paidAmount);
+    const finalDiscount = discount === undefined ? 0 : Number(discount);
+    let finalPaymentStatus = "UNPAID";
+    if (finalPaidAmount > 0) {
+      if (finalPaidAmount >= totalAmount) {
+        finalPaymentStatus = "FULLY PAID";
+      } else {
+        finalPaymentStatus = "PARTIALLY PAID";
+      }
+    }
 
     const updatedInvoice = await Invoice.findByIdAndUpdate(
       id,
@@ -222,6 +268,9 @@ app.put('/api/invoices/:id', async (req, res) => {
         invoiceType,
         format,
         layoutMode: layoutMode || "new",
+        paidAmount: finalPaidAmount,
+        discount: finalDiscount,
+        paymentStatus: finalPaymentStatus,
         rows,
         totalAmount
       },

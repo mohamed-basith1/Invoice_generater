@@ -232,16 +232,42 @@ export const generateInvoicePDF = (items, totalAmount, fulldata, layoutMode = "n
   }
 
   // Summary Section (on the last page)
-  const finalY = doc.lastAutoTable.finalY + 10;
+  let currentY = doc.lastAutoTable.finalY + 8;
   doc.setTextColor(0, 0, 0);
+  doc.setFontSize(10);
+
+  const discount = fulldata.discount || 0;
+  const paid = fulldata.paidAmount || 0;
+  const subTotal = totalAmount + discount;
+  const balance = Math.max(0, totalAmount - paid);
+
+  if (discount > 0) {
+    doc.setFont("helvetica", "normal");
+    doc.text(`Subtotal`, 165, currentY, { align: "right" });
+    doc.text(`${subTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, 195, currentY, { align: "right" });
+    
+    currentY += 5;
+    doc.text(`Discount`, 165, currentY, { align: "right" });
+    doc.text(`${discount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, 195, currentY, { align: "right" });
+    
+    currentY += 5;
+  }
+
   doc.setFont("helvetica", "bold");
-  doc.text(`Total`, 170, finalY, { align: "right" });
-  doc.text(
-    `${totalAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
-    195,
-    finalY,
-    { align: "right" }
-  );
+  doc.text(`Total`, 165, currentY, { align: "right" });
+  doc.text(`${totalAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, 195, currentY, { align: "right" });
+
+  if (paid > 0) {
+    currentY += 5;
+    doc.setFont("helvetica", "normal");
+    doc.text(`Paid`, 165, currentY, { align: "right" });
+    doc.text(`${paid.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, 195, currentY, { align: "right" });
+    
+    currentY += 5;
+    doc.setFont("helvetica", "bold");
+    doc.text(`Balance Due`, 165, currentY, { align: "right" });
+    doc.text(`${balance.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, 195, currentY, { align: "right" });
+  }
 
   // Render bank details / quotation disclaimer on the first page to align with background templates
   doc.setPage(1);
