@@ -192,6 +192,68 @@ app.delete('/api/invoices/:id', async (req, res) => {
   }
 });
 
+// 4. Update an invoice by ID
+app.put('/api/invoices/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      customerName,
+      invoiceNumber,
+      date,
+      projectName,
+      referenceNumber,
+      shop,
+      invoiceType,
+      format,
+      layoutMode,
+      rows,
+      totalAmount
+    } = req.body;
+
+    const updatedInvoice = await Invoice.findByIdAndUpdate(
+      id,
+      {
+        customerName,
+        invoiceNumber,
+        date: new Date(date),
+        projectName,
+        referenceNumber,
+        shop,
+        invoiceType,
+        format,
+        layoutMode: layoutMode || "new",
+        rows,
+        totalAmount
+      },
+      { new: true }
+    );
+
+    if (!updatedInvoice) {
+      return res.status(404).json({ message: 'Invoice not found' });
+    }
+
+    res.json(updatedInvoice);
+  } catch (error) {
+    console.error('Error updating invoice:', error);
+    res.status(500).json({ message: 'Failed to update invoice', error: error.message });
+  }
+});
+
+// 5. Get a single invoice by ID
+app.get('/api/invoices/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const invoice = await Invoice.findById(id);
+    if (!invoice) {
+      return res.status(404).json({ message: 'Invoice not found' });
+    }
+    res.json(invoice);
+  } catch (error) {
+    console.error('Error fetching invoice by ID:', error);
+    res.status(500).json({ message: 'Failed to fetch invoice', error: error.message });
+  }
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', time: new Date() });

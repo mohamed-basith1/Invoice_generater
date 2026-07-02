@@ -16,6 +16,7 @@ import {
 import { DataGrid, GridColDef } from "@mui/x-data-grid";
 import DownloadIcon from "@mui/icons-material/Download";
 import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 import SearchIcon from "@mui/icons-material/Search";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
@@ -24,6 +25,7 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import dayjs, { Dayjs } from "dayjs";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { generateInvoicePDF } from "../utils/printer";
 
@@ -49,6 +51,7 @@ const formatCurrency = (value: number) =>
   }).format(value);
 
 const HistoryPage = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(0);
   const [invoices, setInvoices] = useState<StoredInvoice[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -177,11 +180,17 @@ const HistoryPage = () => {
     {
       field: "actions",
       headerName: "Actions",
-      width: 110,
+      width: 135,
       renderCell: (params) => {
         const row = params.row as StoredInvoice;
         return (
           <Box display="flex" gap={0.5}>
+            <IconButton
+              onClick={() => navigate(`/?edit=${row._id}`)}
+              title="Edit Record"
+            >
+              <EditIcon color="primary" fontSize="small" />
+            </IconButton>
             <IconButton
               onClick={() => generateInvoicePDF(row.rows, row.totalAmount, row, row.layoutMode || "new")}
               title="Download PDF"

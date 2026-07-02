@@ -28,7 +28,8 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import LayersIcon from "@mui/icons-material/Layers";
 import CloseIcon from "@mui/icons-material/Close";
 import axios from "axios";
-import { useState, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
+import { useState, useMemo, useEffect } from "react";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -101,6 +102,9 @@ const formatCurrency = (value: number) =>
   }).format(value);
 
 const InvoicePage = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const editId = searchParams.get("edit");
+
   const [openInvoiceModal, setOpenInvoiceModal] = useState(false);
   const [openInvoiceEditModal, setOpenInvoiceEditModal] = useState(false);
   const [openAddModal, setOpenAddModal] = useState(false);
@@ -136,6 +140,36 @@ const InvoicePage = () => {
     rate: "",
     amount: "",
   });
+
+  useEffect(() => {
+    if (editId) {
+      const fetchInvoiceToEdit = async () => {
+        try {
+          const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5050";
+          const response = await axios.get(`${apiUrl}/api/invoices/${editId}`);
+          const data = response.data;
+          
+          setInvoiceData({
+            customerName: data.customerName,
+            invoiceNumber: data.invoiceNumber,
+            date: dayjs(data.date).format("YYYY-MM-DD"),
+            projectName: data.projectName || "",
+            referenceNumber: data.referenceNumber || "",
+            shop: data.shop || "SZ SIGNAGE",
+            invoiceType: data.invoiceType || "Signage Work",
+            format: data.format || "INVOICE",
+          });
+          
+          setRows(data.rows || []);
+          setIsOldLayout(data.layoutMode === "old");
+        } catch (err) {
+          console.error("Failed to fetch invoice for editing:", err);
+          alert("Failed to load the selected invoice for editing.");
+        }
+      };
+      fetchInvoiceToEdit();
+    }
+  }, [editId]);
 
   const handleInvoiceSave = () => {
     setRows([]); // Clear previous data
@@ -344,32 +378,55 @@ const InvoicePage = () => {
   const handleDownload = async () => {
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5050";
-      const response = await axios.post(`${apiUrl}/api/invoices`, {
-        ...invoiceData,
-        layoutMode: isOldLayout ? "old" : "new",
-        rows,
-        totalAmount,
-      });
-      const savedDoc = response.data;
+      let savedDoc;
+
+      if (editId) {
+        // Update existing invoice
+        const response = await axios.put(`${apiUrl}/api/invoices/${editId}`, {
+          ...invoiceData,
+          layoutMode: isOldLayout ? "old" : "new",
+          rows,
+          totalAmount,
+        });
+        savedDoc = response.data;
+        setToastMessage("Invoice updated successfully!");
+      } else {
+        // Create new invoice
+        const response = await axios.post(`${apiUrl}/api/invoices`, {
+          ...invoiceData,
+          layoutMode: isOldLayout ? "old" : "new",
+          rows,
+          totalAmount,
+        });
+        savedDoc = response.data;
+        setToastMessage("Saved to database successfully!");
+      }
+
       setInvoiceData((prev) => ({
         ...prev,
         invoiceNumber: savedDoc.invoiceNumber,
       }));
-      setToastMessage("Saved to database successfully!");
       setToastSeverity("success");
       setToastOpen(true);
       generateInvoicePDF(rows, totalAmount, {
         ...invoiceData,
         invoiceNumber: savedDoc.invoiceNumber,
       }, isOldLayout ? "old" : "new");
+
+      if (editId) {
+        // Clear edit query param after successful save to return to creation mode
+        setSearchParams({});
+      }
     } catch (err) {
       console.error("Failed to save invoice to MongoDB:", err);
-      setToastMessage("Failed to save invoice to database.");
+      setToastMessage(editId ? "Failed to update invoice in database." : "Failed to save invoice to database.");
       setToastSeverity("error");
       setToastOpen(true);
 
       const confirmDownload = window.confirm(
-        "Warning: Failed to save the invoice to the database. This transaction will NOT be saved to your history. Do you want to download the PDF anyway?"
+        editId
+          ? "Warning: Failed to update the invoice in the database. Do you want to download the PDF anyway?"
+          : "Warning: Failed to save the invoice to the database. This transaction will NOT be saved to your history. Do you want to download the PDF anyway?"
       );
       if (confirmDownload) {
         generateInvoicePDF(rows, totalAmount, invoiceData, isOldLayout ? "old" : "new");
@@ -759,6 +816,29 @@ const InvoicePage = () => {
           <Typography variant="h6" fontWeight="bold" sx={{ color: "text.primary" }}>
             Total: <span style={{ color: "#1E1E2D" }}>{formatCurrency(totalAmount)}</span>
           </Typography>
+          {editId && (
+            <Button
+              variant="outlined"
+              color="warning"
+              onClick={() => {
+                setSearchParams({});
+                setInvoiceData({
+                  customerName: "",
+                  invoiceNumber: "",
+                  date: "",
+                  projectName: "",
+                  referenceNumber: "",
+                  shop: "SZ SIGNAGE",
+                  invoiceType: "Signage Work",
+                  format: "INVOICE",
+                });
+                setRows([]);
+              }}
+              sx={{ px: 3, py: 1, borderRadius: 2, textTransform: "none", fontSize: "15px", fontWeight: "bold" }}
+            >
+              Cancel Edit
+            </Button>
+          )}
           <Button
             variant="contained"
             color="success"
@@ -766,7 +846,7 @@ const InvoicePage = () => {
             onClick={handleDownload}
             sx={{ px: 4, py: 1, borderRadius: 2, textTransform: "none", fontSize: "15px", fontWeight: "bold" }}
           >
-            Download PDF
+            {editId ? "Update & Download PDF" : "Download PDF"}
           </Button>
         </Box>
       </Box>
