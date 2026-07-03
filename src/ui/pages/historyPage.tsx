@@ -17,6 +17,9 @@ import {
   DialogContent,
   DialogActions,
   Button,
+  Menu,
+  ListItemIcon,
+  ListItemText,
 } from "@mui/material";
 import { DataGrid, GridColDef } from "@mui/x-data-grid";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -26,6 +29,8 @@ import SearchIcon from "@mui/icons-material/Search";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import PaymentsIcon from "@mui/icons-material/Payments";
+import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
+import TableChartIcon from "@mui/icons-material/TableChart";
 import { useEffect, useState, useMemo } from "react";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
@@ -34,6 +39,8 @@ import dayjs, { Dayjs } from "dayjs";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
 import { generateInvoicePDF } from "../utils/printer";
 
 interface StoredInvoice {
@@ -42,7 +49,6 @@ interface StoredInvoice {
   invoiceNumber: string;
   date: string;
   projectName: string;
-  referenceNumber: string;
   shop: string;
   invoiceType: string;
   format: string; // "INVOICE" or "QUOTATION"
@@ -50,6 +56,8 @@ interface StoredInvoice {
   totalAmount: number;
   paidAmount?: number;
   paymentStatus?: string;
+  discount?: number;
+  layoutMode?: string;
 }
 
 const formatCurrency = (value: number) =>
@@ -83,6 +91,471 @@ const HistoryPage = () => {
   const [quickPayOpen, setQuickPayOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<StoredInvoice | null>(null);
   const [quickPayAmount, setQuickPayAmount] = useState<number | "">("");
+
+  // Download Menu States
+  const [downloadMenuAnchor, setDownloadMenuAnchor] = useState<null | HTMLElement>(null);
+  const [activeInvoiceForDownload, setActiveInvoiceForDownload] = useState<StoredInvoice | null>(null);
+
+  const handleDownloadClick = (event: React.MouseEvent<HTMLElement>, invoice: StoredInvoice) => {
+    setDownloadMenuAnchor(event.currentTarget);
+    setActiveInvoiceForDownload(invoice);
+  };
+
+  const handleDownloadClose = () => {
+    setDownloadMenuAnchor(null);
+    setActiveInvoiceForDownload(null);
+  };
+
+  const handleDownloadPDF = () => {
+    if (activeInvoiceForDownload) {
+      generateInvoicePDF(
+        activeInvoiceForDownload.rows,
+        activeInvoiceForDownload.totalAmount,
+        activeInvoiceForDownload,
+        activeInvoiceForDownload.layoutMode || "new"
+      );
+    }
+    handleDownloadClose();
+  };
+
+  const handleDownloadExcelSingle = async () => {
+    if (!activeInvoiceForDownload) return;
+    try {
+      const invoice = activeInvoiceForDownload;
+      const isOldLayout = invoice.layoutMode === "old";
+      const currentInvoiceNumber = invoice.invoiceNumber;
+
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Invoice");
+
+      // Define grid columns
+      if (isOldLayout) {
+        worksheet.columns = [
+          { key: "sNo", width: 8 },
+          { key: "description", width: 50 },
+          { key: "quantity", width: 12 },
+          { key: "rate", width: 15 },
+          { key: "amount", width: 18 }
+        ];
+      } else {
+        worksheet.columns = [
+          { key: "sNo", width: 8 },
+          { key: "description", width: 35 },
+          { key: "thickness", width: 14 },
+          { key: "size", width: 12 },
+          { key: "unit", width: 10 },
+          { key: "area", width: 10 },
+          { key: "type", width: 12 },
+          { key: "quantity", width: 10 },
+          { key: "rate", width: 14 },
+          { key: "amount", width: 18 }
+        ];
+      }
+
+      const totalCols = isOldLayout ? 5 : 10;
+      const amountColLetter = isOldLayout ? "E" : "J";
+
+      // Row 1: Spacing
+      worksheet.addRow([]);
+      worksheet.getRow(1).height = 10;
+
+      // Helper function to fill a range of cells with a solid background color
+      const fillRangeBackground = (startRow: number, startCol: number, endRow: number, endCol: number, colorArgb: string) => {
+        for (let r = startRow; r <= endRow; r++) {
+          const rowObj = worksheet.getRow(r);
+          for (let c = startCol; c <= endCol; c++) {
+            const cell = rowObj.getCell(c);
+            cell.fill = {
+              type: "pattern",
+              pattern: "solid",
+              fgColor: { argb: colorArgb }
+            };
+          }
+        }
+      };
+
+      // Fill rows 2 to 7, columns 1 to totalCols, with the solid brand background color
+      const headerColor = "FF1E1E2D";
+      fillRangeBackground(2, 1, 7, totalCols, headerColor);
+
+      // Left Side Title: "INVOICE" or "QUOTATION" (Merged from row 3 to 6 inside rows 2 to 7 banner)
+      const leftMergeEndCol = isOldLayout ? 3 : 6;
+      worksheet.mergeCells(3, 1, 6, leftMergeEndCol);
+      const titleCell = worksheet.getCell("A3");
+      titleCell.value = invoice.format;
+      titleCell.font = {
+        name: "Segoe UI",
+        size: 32,
+        bold: true,
+        color: { argb: "FFFFFFFF" }
+      };
+      titleCell.alignment = {
+        vertical: "middle",
+        horizontal: "left",
+        indent: 3 // More left padding
+      };
+
+      // Right Side Company Info: (Rows 3 to 6, right aligned with spaces for padding)
+      const rightMergeStartCol = isOldLayout ? 4 : 8;
+      
+      const setRightHeaderCell = (rowNum: number, text: string, isBold: boolean = false, size: number = 9.5) => {
+        worksheet.mergeCells(rowNum, rightMergeStartCol, rowNum, totalCols);
+        const cell = worksheet.getRow(rowNum).getCell(rightMergeStartCol);
+        cell.value = text + "     "; // More right padding (5 spaces)
+        cell.font = {
+          name: "Segoe UI",
+          size: size,
+          bold: isBold,
+          color: { argb: "FFFFFFFF" }
+        };
+        cell.alignment = {
+          vertical: "middle",
+          horizontal: "right"
+        };
+      };
+
+      setRightHeaderCell(3, invoice.shop, true, 11);
+      setRightHeaderCell(4, "No 12, Main Street Road", false, 9.5);
+      setRightHeaderCell(5, "Ayyampet, Thanjavur - 614201", false, 9.5);
+      setRightHeaderCell(6, "Phone: +91 9790343367", false, 9.5);
+
+      // Set heights for the header rows (row 2 and 7 are empty spacers for symmetric vertical padding)
+      worksheet.getRow(2).height = 20; // Top padding
+      worksheet.getRow(3).height = 18;
+      worksheet.getRow(4).height = 18;
+      worksheet.getRow(5).height = 18;
+      worksheet.getRow(6).height = 18;
+      worksheet.getRow(7).height = 20; // Bottom padding
+
+      // Row 8: Blank Spacer (row 7 is now part of the banner block)
+      worksheet.addRow([]);
+      worksheet.getRow(8).height = 15;
+
+      // Fill the entire metadata block (rows 8 to 15) with solid white background to hide gridlines
+      fillRangeBackground(8, 1, 15, totalCols, "FFFFFFFF");
+
+      // Left-side metadata label helper (Writing to Column A as rich text, spilling into B)
+      const setLeftMeta = (rowNum: number, label: string, val: string) => {
+        const rowObj = worksheet.getRow(rowNum);
+        const cell = rowObj.getCell(1); // Column A
+        cell.value = {
+          richText: [
+            { text: label.padEnd(24, " "), font: { name: "Segoe UI", size: 9.5, bold: true, color: { argb: "FF000000" } } },
+            { text: val, font: { name: "Segoe UI", size: 9.5, color: { argb: "FF333333" } } }
+          ]
+        };
+        cell.alignment = { vertical: "middle", horizontal: "left" };
+      };
+
+      // Right-side metadata (Bill To details)
+      const rightCol = totalCols;
+
+      const setRightMeta = (rowNum: number, text: string, isBold: boolean = false, textColor: string = "FF000000") => {
+        const rowObj = worksheet.getRow(rowNum);
+        const cell = rowObj.getCell(rightCol);
+        cell.value = text + "   "; // Append spaces for clean right margin/padding
+        cell.font = { name: "Segoe UI", size: 9.5, bold: isBold, color: { argb: textColor } };
+        cell.alignment = { vertical: "middle", horizontal: "right" };
+      };
+
+      // Set metadata values (aligned in same-row pairs)
+      setLeftMeta(10, invoice.format === "INVOICE" ? "Invoice No." : "Quotation No.", invoice.invoiceNumber);
+      setRightMeta(10, "Bill To", true, "FF000000");
+
+      setLeftMeta(11, "Date of Issue", dayjs(invoice.date).format("DD MMM YYYY"));
+      setRightMeta(11, invoice.customerName.toUpperCase(), true, "FF000000");
+
+      if (invoice.projectName) {
+        setLeftMeta(12, "Project Name", invoice.projectName);
+      }
+      
+      let infoText = "";
+      if (invoice.projectName) {
+        infoText = `Project: ${invoice.projectName}`;
+      } else {
+        infoText = invoice.invoiceType || "";
+      }
+      if (infoText) {
+        setRightMeta(12, infoText, false, "FF555555");
+      }
+
+      if (invoice.invoiceType) {
+        setLeftMeta(13, "Invoice Type", invoice.invoiceType);
+      }
+
+      // Format metadata rows heights
+      for (let r = 9; r <= 15; r++) {
+        worksheet.getRow(r).height = 18;
+      }
+
+      // Row 15: Blank Spacer
+      worksheet.addRow([]);
+      worksheet.getRow(15).height = 15;
+
+      // Row 16: Table Headers
+      const headerRowObj = worksheet.getRow(16);
+      headerRowObj.height = 26;
+
+      let headers: string[];
+      if (isOldLayout) {
+        headers = ["S.NO", "DESCRIPTION", "QTY", "RATE", "AMOUNT"];
+      } else {
+        headers = [
+          "S.NO",
+          "DESCRIPTION",
+          "THICKNESS",
+          "SIZE",
+          "UNIT",
+          "AREA",
+          "TYPE",
+          "QTY",
+          "RATE",
+          "AMOUNT"
+        ];
+      }
+
+      headers.forEach((h, index) => {
+        const cell = headerRowObj.getCell(index + 1);
+        cell.value = h;
+        cell.font = { name: "Segoe UI", size: 9.5, bold: true, color: { argb: "FFFFFFFF" } };
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FF1E1E2D" }
+        };
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+        cell.border = {
+          top: { style: "thin", color: { argb: "FF1E1E2D" } },
+          bottom: { style: "medium", color: { argb: "FF1E1E2D" } },
+          left: { style: "thin", color: { argb: "FF3A3A4D" } },
+          right: { style: "thin", color: { argb: "FF3A3A4D" } }
+        };
+      });
+
+      // Item Rows
+      let currentRowIndex = 17;
+      invoice.rows.forEach((item, index) => {
+        const itemRowObj = worksheet.getRow(currentRowIndex);
+        itemRowObj.height = 22;
+
+        let rowValues: any[];
+        if (isOldLayout) {
+          rowValues = [
+            index + 1,
+            item.description,
+            item.quantity,
+            item.rate,
+            `=C${currentRowIndex}*D${currentRowIndex}`
+          ];
+        } else {
+          rowValues = [
+            index + 1,
+            item.description,
+            item.boardThickness || "-",
+            item.size || "-",
+            item.unit || "-",
+            item.area || 0,
+            item.type || "-",
+            item.quantity,
+            item.rate,
+            item.type === "Other"
+              ? item.amount
+              : `=IF(G${currentRowIndex}="Other", ${item.amount}, IF(E${currentRowIndex}="Sq.ft", IF(H${currentRowIndex}=0, 1, H${currentRowIndex})*F${currentRowIndex}*I${currentRowIndex}, H${currentRowIndex}*I${currentRowIndex}))`
+          ];
+        }
+
+        rowValues.forEach((val, colIdx) => {
+          const cell = itemRowObj.getCell(colIdx + 1);
+          if (typeof val === "string" && val.startsWith("=")) {
+            cell.value = { formula: val.substring(1) };
+          } else {
+            cell.value = val;
+          }
+          cell.font = { name: "Segoe UI", size: 9.5, color: { argb: "FF333333" } };
+
+          if (colIdx === 0) {
+            cell.alignment = { vertical: "middle", horizontal: "center" };
+          } else if (colIdx === 1) {
+            cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+          } else if (isOldLayout) {
+            if (colIdx === 2) {
+              cell.alignment = { vertical: "middle", horizontal: "center" };
+            } else {
+              cell.alignment = { vertical: "middle", horizontal: "right" };
+              cell.numFormat = '"₹"#,##0.00';
+            }
+          } else {
+            if (colIdx >= 2 && colIdx <= 6) {
+              cell.alignment = { vertical: "middle", horizontal: "center" };
+              if (colIdx === 5) {
+                cell.numFormat = "#,##0.00";
+              }
+            } else if (colIdx === 7) {
+              cell.alignment = { vertical: "middle", horizontal: "center" };
+            } else {
+              cell.alignment = { vertical: "middle", horizontal: "right" };
+              cell.numFormat = '"₹"#,##0.00';
+            }
+          }
+
+          cell.border = {
+            top: { style: "thin", color: { argb: "FFE0E0E0" } },
+            bottom: { style: "thin", color: { argb: "FFE0E0E0" } },
+            left: { style: "thin", color: { argb: "FFE0E0E0" } },
+            right: { style: "thin", color: { argb: "FFE0E0E0" } }
+          };
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFFFFFFF" }
+          };
+        });
+
+        currentRowIndex++;
+      });
+
+      // Spacer row with white background
+      const spacerRowObj = worksheet.getRow(currentRowIndex);
+      spacerRowObj.height = 10;
+      for (let c = 1; c <= totalCols; c++) {
+        spacerRowObj.getCell(c).fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFFFFFFF" }
+        };
+      }
+      currentRowIndex++;
+
+      // Summary Calculations
+      const discountVal = invoice.discount || 0;
+      const paidVal = invoice.paidAmount || 0;
+      const totalAmountVal = invoice.totalAmount || 0;
+      const balanceVal = Math.max(0, totalAmountVal - paidVal);
+
+      // Track row coordinates for formulas
+      const endItemRow = currentRowIndex - 2;
+      const subtotalRow = currentRowIndex;
+      let discountRow = -1;
+      let totalRow = -1;
+      let paidRow = -1;
+
+      const addSummaryRow = (label: string, value: any, isBold: boolean, textColorArgb?: string) => {
+        const sumRow = worksheet.getRow(currentRowIndex);
+        sumRow.height = 20;
+
+        // Fill entire row with white background to hide default gridlines
+        for (let c = 1; c <= totalCols; c++) {
+          sumRow.getCell(c).fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFFFFFFF" }
+          };
+        }
+
+        const labelCell = sumRow.getCell(totalCols - 1);
+        labelCell.value = label;
+        labelCell.font = {
+          name: "Segoe UI",
+          size: 10,
+          bold: isBold,
+          color: textColorArgb ? { argb: textColorArgb } : undefined
+        };
+        labelCell.alignment = { vertical: "middle", horizontal: "right" };
+
+        const valCell = sumRow.getCell(totalCols);
+        if (typeof value === "string" && value.startsWith("=")) {
+          valCell.value = { formula: value.substring(1) };
+        } else {
+          valCell.value = value;
+        }
+        valCell.font = {
+          name: "Segoe UI",
+          size: 10,
+          bold: isBold,
+          color: textColorArgb ? { argb: textColorArgb } : undefined
+        };
+        valCell.alignment = { vertical: "middle", horizontal: "right" };
+        valCell.numFormat = '"₹"#,##0.00';
+
+        if (label === "Total" || label === "Balance Due") {
+          labelCell.border = {
+            top: { style: "thin", color: { argb: "FFCCCCCC" } },
+            bottom: { style: "double", color: { argb: "FF1E1E2D" } }
+          };
+          valCell.border = {
+            top: { style: "thin", color: { argb: "FFCCCCCC" } },
+            bottom: { style: "double", color: { argb: "FF1E1E2D" } }
+          };
+        }
+
+        currentRowIndex++;
+      };
+
+      addSummaryRow("Subtotal", `=SUM(${amountColLetter}17:${amountColLetter}${endItemRow})`, false);
+      if (discountVal > 0) {
+        discountRow = currentRowIndex;
+        addSummaryRow("Discount", discountVal, false);
+      }
+      
+      totalRow = currentRowIndex;
+      if (discountRow !== -1) {
+        addSummaryRow("Total", `=${amountColLetter}${subtotalRow}-${amountColLetter}${discountRow}`, true, "FF1E1E2D");
+      } else {
+        addSummaryRow("Total", `=${amountColLetter}${subtotalRow}`, true, "FF1E1E2D");
+      }
+      
+      if (paidVal > 0) {
+        paidRow = currentRowIndex;
+        addSummaryRow("Paid", paidVal, false);
+        addSummaryRow("Balance Due", `=MAX(0,${amountColLetter}${totalRow}-${amountColLetter}${paidRow})`, true, balanceVal > 0 ? "FFD32F2F" : "FF2E7D32");
+      }
+
+      const startFooterRow = currentRowIndex;
+
+      // Bank Details or Installation Disclaimer
+      if (invoice.format === "INVOICE") {
+        const titleRow = worksheet.getRow(currentRowIndex);
+        titleRow.getCell(2).value = "BANK DETAILS:";
+        titleRow.getCell(2).font = { name: "Segoe UI", size: 9.5, bold: true, color: { argb: "FF555555" } };
+
+        const setBankRow = (label: string, val: string) => {
+          currentRowIndex++;
+          const rowObj = worksheet.getRow(currentRowIndex);
+          rowObj.getCell(2).value = `${label}  ${val}`;
+          rowObj.getCell(2).font = { name: "Segoe UI", size: 9.5, color: { argb: "FF444444" } };
+        };
+
+        setBankRow("A/C NAME:", "UBAIYATHUL JIBRI");
+        setBankRow("BANK NAME:", "ICICI BANK");
+        setBankRow("A/C NO:", "000101628687");
+        setBankRow("IFSC NO:", "ICIC0000001");
+      } else {
+        const disclaimerRow = worksheet.getRow(currentRowIndex);
+        disclaimerRow.getCell(2).value = "INSTALLATION AND TRANSPORT CHARGES ARE EXTRA";
+        disclaimerRow.getCell(2).font = { name: "Segoe UI", size: 10, bold: true, color: { argb: "FFD32F2F" } };
+      }
+
+      currentRowIndex += 2;
+      const thankYouRow = worksheet.getRow(currentRowIndex);
+      thankYouRow.getCell(2).value = "Thank you for your business!";
+      thankYouRow.getCell(2).font = { name: "Segoe UI", size: 11, italic: true, color: { argb: "FF777777" } };
+
+      // Fill footer / disclaimer / bank details and bottom spacers with solid white background to hide gridlines
+      fillRangeBackground(startFooterRow, 1, currentRowIndex + 2, totalCols, "FFFFFFFF");
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      });
+      const filename = `${invoice.shop.replace(/\s+/g, "_")}_${invoice.invoiceNumber || "DRAFT"}.xlsx`;
+      saveAs(blob, filename);
+
+    } catch (err) {
+      console.error("Failed to generate ExcelJS invoice:", err);
+      alert("Failed to export invoice to Excel.");
+    }
+    handleDownloadClose();
+  };
 
   // Debounce search input to avoid hitting backend on every keystroke
   useEffect(() => {
@@ -218,7 +691,6 @@ const HistoryPage = () => {
         "Date",
         "Customer Name",
         "Project Name",
-        "Reference No",
         "Shop Office",
         "Document Type",
         "Total Amount (INR)",
@@ -239,7 +711,6 @@ const HistoryPage = () => {
           dayjs(inv.date).format("YYYY-MM-DD"),
           inv.customerName,
           inv.projectName || "",
-          inv.referenceNumber || "",
           inv.shop,
           inv.format,
           total,
@@ -261,7 +732,6 @@ const HistoryPage = () => {
         { wch: 12 }, // Date
         { wch: 25 }, // Customer Name
         { wch: 20 }, // Project Name
-        { wch: 15 }, // Reference No
         { wch: 18 }, // Shop Office
         { wch: 15 }, // Document Type
         { wch: 18 }, // Total Amount
@@ -369,9 +839,7 @@ const HistoryPage = () => {
           <span
             style={{
               color,
-              backgroundColor: bgColor,
-              padding: "4px 8px",
-              borderRadius: "12px",
+             
               fontSize: "12px",
               fontWeight: "bold",
               textTransform: "uppercase",
@@ -408,8 +876,8 @@ const HistoryPage = () => {
               <EditIcon color="primary" fontSize="small" />
             </IconButton>
             <IconButton
-              onClick={() => generateInvoicePDF(row.rows, row.totalAmount, row, row.layoutMode || "new")}
-              title="Download PDF"
+              onClick={(e) => handleDownloadClick(e, row)}
+              title="Download Options"
             >
               <DownloadIcon color="success" fontSize="small" />
             </IconButton>
@@ -754,6 +1222,35 @@ const HistoryPage = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Download Options Menu */}
+      <Menu
+        anchorEl={downloadMenuAnchor}
+        open={Boolean(downloadMenuAnchor)}
+        onClose={handleDownloadClose}
+        transformOrigin={{ horizontal: "right", vertical: "top" }}
+        anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
+        PaperProps={{
+          sx: {
+            boxShadow: "0px 4px 20px rgba(0, 0, 0, 0.08)",
+            borderRadius: 2,
+            minWidth: 160,
+          },
+        }}
+      >
+        <MenuItem onClick={handleDownloadPDF}>
+          <ListItemIcon>
+            <PictureAsPdfIcon fontSize="small" color="error" />
+          </ListItemIcon>
+          <ListItemText primary="Download PDF" />
+        </MenuItem>
+        <MenuItem onClick={handleDownloadExcelSingle}>
+          <ListItemIcon>
+            <TableChartIcon fontSize="small" color="success" />
+          </ListItemIcon>
+          <ListItemText primary="Download Excel" />
+        </MenuItem>
+      </Menu>
     </Box>
   );
 };

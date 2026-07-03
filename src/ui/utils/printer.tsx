@@ -96,8 +96,7 @@ export const generateInvoicePDF = (items, totalAmount, fulldata, layoutMode = "n
   printMeta(isInvoice ? "Invoice No:" : "Quotation No:", fulldata.invoiceNumber, 14, 42, 78);
   printMeta("Customer:", capitalizeWords(fulldata.customerName), 14, 42, 84);
   printMeta("Project Name:", fulldata.projectName, 14, 42, 90);
-  printMeta("Reference No:", fulldata.referenceNumber, 14, 42, 96);
-  printMeta("Invoice Type:", fulldata.invoiceType, 14, 42, 102);
+  printMeta("Invoice Type:", fulldata.invoiceType, 14, 42, 96);
 
   // Right column metadata
   doc.setFont("helvetica", "bold");
@@ -302,5 +301,7 @@ export const generateInvoicePDF = (items, totalAmount, fulldata, layoutMode = "n
   }
 
   // Save the PDF
-  doc.save(`${fulldata.shop}_${fulldata.format}.pdf`);
+  const safeShop = fulldata.shop.replace(/\s+/g, "_");
+  const safeInvNum = fulldata.invoiceNumber || "DRAFT";
+  doc.save(`${safeShop}_${safeInvNum}.pdf`);
 };

@@ -58,7 +58,6 @@ export interface InvoiceData {
   invoiceNumber: string;
   date: string;
   projectName: string;
-  referenceNumber: string;
   shop: string;
   invoiceType: string;
   format: string; // "INVOICE" or "QUOTATION"
@@ -126,7 +125,6 @@ const InvoicePage = () => {
     invoiceNumber: "",
     date: "",
     projectName: "",
-    referenceNumber: "",
     shop: "SZ SIGNAGE",
     invoiceType: "Signage Work",
     format: "INVOICE",
@@ -159,7 +157,6 @@ const InvoicePage = () => {
             invoiceNumber: data.invoiceNumber,
             date: dayjs(data.date).format("YYYY-MM-DD"),
             projectName: data.projectName || "",
-            referenceNumber: data.referenceNumber || "",
             shop: data.shop || "SZ SIGNAGE",
             invoiceType: data.invoiceType || "Signage Work",
             format: data.format || "INVOICE",
@@ -470,18 +467,11 @@ const InvoicePage = () => {
     row11[7] = invoiceData.projectName ? `Project: ${invoiceData.projectName}` : "-";
     sheetData.push(row11);
 
-    // Row 12: Reference No & Reference
+    // Row 12: Invoice Type
     const row12 = Array(8).fill("");
-    row12[2] = "Reference No";
-    row12[3] = invoiceData.referenceNumber || "-";
-    row12[7] = invoiceData.referenceNumber ? `Ref: ${invoiceData.referenceNumber}` : "-";
+    row12[2] = "Invoice Type";
+    row12[3] = invoiceData.invoiceType || "-";
     sheetData.push(row12);
-
-    // Row 13: Invoice Type
-    const row13 = Array(8).fill("");
-    row13[2] = "Invoice Type";
-    row13[3] = invoiceData.invoiceType || "-";
-    sheetData.push(row13);
 
     // Row 14 & 15: Blank spacers
     sheetData.push([]);
@@ -927,14 +917,7 @@ const InvoicePage = () => {
             {invoiceData.projectName || "-"}
           </Typography>
         </Box>
-        <Box>
-          <Typography variant="caption" color="text.secondary" fontWeight="bold" sx={{ textTransform: "uppercase" }}>
-            Reference Number
-          </Typography>
-          <Typography variant="body1" sx={{ fontWeight: 500, mt: 0.5 }}>
-            {invoiceData.referenceNumber || "-"}
-          </Typography>
-        </Box>
+
         <Box>
           <Typography variant="caption" color="text.secondary" fontWeight="bold" sx={{ textTransform: "uppercase" }}>
             Shop
@@ -1082,12 +1065,11 @@ const InvoicePage = () => {
               color="warning"
               onClick={() => {
                 setSearchParams({});
-                setInvoiceData({
+                 setInvoiceData({
                   customerName: "",
                   invoiceNumber: "",
                   date: "",
                   projectName: "",
-                  referenceNumber: "",
                   shop: "SZ SIGNAGE",
                   invoiceType: "Signage Work",
                   format: "INVOICE",
@@ -1199,20 +1181,12 @@ const InvoicePage = () => {
             onChange={(e) => setInvoiceData({ ...invoiceData, projectName: e.target.value })}
           />
 
-          <Box display="flex" gap={2}>
-            <TextField
-              label="Reference Number"
-              fullWidth
-              value={invoiceData.referenceNumber}
-              onChange={(e) => setInvoiceData({ ...invoiceData, referenceNumber: e.target.value })}
-            />
-            <TextField
-              label="Invoice Type"
-              fullWidth
-              value={invoiceData.invoiceType}
-              onChange={(e) => setInvoiceData({ ...invoiceData, invoiceType: e.target.value })}
-            />
-          </Box>
+          <TextField
+            label="Invoice Type"
+            fullWidth
+            value={invoiceData.invoiceType}
+            onChange={(e) => setInvoiceData({ ...invoiceData, invoiceType: e.target.value })}
+          />
           <Box display="flex" gap={2}>
             <TextField
               label="Paid Amount (INR)"
@@ -1323,20 +1297,12 @@ const InvoicePage = () => {
             onChange={(e) => setInvoiceData({ ...invoiceData, projectName: e.target.value })}
           />
 
-          <Box display="flex" gap={2}>
-            <TextField
-              label="Reference Number"
-              fullWidth
-              value={invoiceData.referenceNumber}
-              onChange={(e) => setInvoiceData({ ...invoiceData, referenceNumber: e.target.value })}
-            />
-            <TextField
-              label="Invoice Type"
-              fullWidth
-              value={invoiceData.invoiceType}
-              onChange={(e) => setInvoiceData({ ...invoiceData, invoiceType: e.target.value })}
-            />
-          </Box>
+          <TextField
+            label="Invoice Type"
+            fullWidth
+            value={invoiceData.invoiceType}
+            onChange={(e) => setInvoiceData({ ...invoiceData, invoiceType: e.target.value })}
+          />
           <Box display="flex" gap={2}>
             <TextField
               label="Paid Amount (INR)"
