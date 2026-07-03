@@ -1,6 +1,3 @@
-import { Buffer } from "buffer";
-global.Buffer = global.Buffer || Buffer;
-
 import React, { useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { View, StyleSheet, TouchableOpacity, Text, Image } from "react-native";

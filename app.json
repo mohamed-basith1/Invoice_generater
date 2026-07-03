@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "9d5145ea-bee0-4d1a-ad73-33f994a9f22a"
+      }
+    },
+    "android": {
+      "package": "com.mohamedbasith.sticker_zone"
+    }
+  }
+}

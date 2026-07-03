@@ -435,7 +435,7 @@ export default function InvoiceScreen({ navigation, route, onOpenMenu }: any) {
           <View style={styles.toolbarActionButtons}>
             <TouchableOpacity style={styles.btnOutline} onPress={() => setMetadataModalVisible(true)}>
               <Ionicons name="document-text-outline" size={14} color={Theme.colors.primary} />
-              <Text style={styles.btnOutlineText}>{customerName ? "Edit Metadata" : "Configure"}</Text>
+              <Text style={styles.btnOutlineText}>{customerName ? "Edit Metadata" : "Create Invoice"}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.btnSolid, !customerName && { opacity: 0.5 }]}
@@ -727,15 +727,13 @@ export default function InvoiceScreen({ navigation, route, onOpenMenu }: any) {
                   onChangeText={setProjectName}
                 />
 
-                {/* Invoice Type */}
                 <Text style={styles.fieldLabel}>Invoice Type</Text>
-                <TouchableOpacity
-                  style={styles.selectInput}
-                  onPress={() => openOptionPicker("Select Invoice Type", INVOICE_TYPES, "invoiceType")}
-                >
-                  <Text style={styles.selectInputText}>{invoiceType}</Text>
-                  <Ionicons name="chevron-down" size={16} color={Theme.colors.textSecondary} />
-                </TouchableOpacity>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. Signage Work, Sticker Work"
+                  value={invoiceType}
+                  onChangeText={setInvoiceType}
+                />
 
                 <TouchableOpacity style={styles.modalSaveButton} onPress={() => setMetadataModalVisible(false)}>
                   <Text style={styles.modalSaveButtonText}>{editingInvoice ? "Save Details" : "Create"}</Text>

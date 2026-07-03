@@ -1,5 +1,5 @@
 import * as Sharing from "expo-sharing";
-import { documentDirectory, downloadAsync } from "expo-file-system/legacy";
+import { documentDirectory, downloadAsync } from "expo-file-system/src/legacy/FileSystem";
 import { Alert } from "react-native";
 import { StoredInvoice } from "../types";
 import { API_URL } from "../config";
@@ -24,12 +24,11 @@ export const exportInvoicePDF = async (invoice: StoredInvoice) => {
     // Share PDF using Native Sharing dialog
     await Sharing.shareAsync(targetUri, {
       mimeType: "application/pdf",
-      dialogTitle: "Download PDF",
+      dialogTitle: "Download PDF Invoice",
       UTI: "com.adobe.pdf",
     });
-  } catch (error) {
-    console.error("Failed to export PDF:", error);
-    Alert.alert("Error", "Failed to download PDF file from server.");
+  } catch (err) {
+    Alert.alert("Error", "Failed to download invoice PDF.");
   }
 };
 
@@ -53,11 +52,10 @@ export const exportInvoiceExcel = async (invoice: StoredInvoice) => {
     // Trigger Native Share Dialog
     await Sharing.shareAsync(targetUri, {
       mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      dialogTitle: "Download Excel Invoice",
+      dialogTitle: "Download Excel Spreadsheet",
       UTI: "com.microsoft.excel.xlsx",
     });
-  } catch (error) {
-    console.error("Failed to export Excel:", error);
-    Alert.alert("Error", "Failed to download Excel file from server.");
+  } catch (err) {
+    Alert.alert("Error", "Failed to download invoice Excel sheet.");
   }
 };

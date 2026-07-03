@@ -22,7 +22,7 @@ import { Theme } from "../theme";
 import { API_URL } from "../config";
 import { StoredInvoice } from "../types";
 import { exportInvoicePDF, exportInvoiceExcel } from "../utils/exporters";
-import { documentDirectory, downloadAsync } from "expo-file-system/legacy";
+import { documentDirectory, downloadAsync } from "expo-file-system/src/legacy/FileSystem";
 import * as Sharing from "expo-sharing";
 
 const SHOPS = ["SZ SIGNAGE", "STICKER ZONE"];
