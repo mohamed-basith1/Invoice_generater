@@ -30,6 +30,7 @@ import MenuIcon from "@mui/icons-material/Menu";
 import InvoicePage from "./pages/InvoicePage";
 import HistoryPage from "./pages/historyPage";
 import SettingsPage from "./pages/settingsPage";
+import LogoImage from "./logo.png";
 
 const Router =
   import.meta.env.MODE === "development" ? BrowserRouter : HashRouter;
@@ -82,6 +83,7 @@ export default function CustomSidebar() {
               >
                 <MenuIcon />
               </IconButton>
+              <img src={LogoImage} style={{ width: "32px", height: "32px", borderRadius: "6px" }} alt="Logo" />
               <Typography variant="h6" fontWeight="bold" sx={{ letterSpacing: 0.5 }}>
                 SZ SIGNAGE & STICKER ZONE
               </Typography>
@@ -110,9 +112,12 @@ export default function CustomSidebar() {
         >
           {/* Header inside drawer */}
           <Box display="flex" alignItems="center" justifyContent="space-between" sx={{ mb: 2, px: 1 }}>
-            <Typography variant="h6" fontWeight="bold">
-              Navigation
-            </Typography>
+            <Box display="flex" alignItems="center" gap={1.5}>
+              <img src={LogoImage} style={{ width: "36px", height: "36px", borderRadius: "8px" }} alt="Logo" />
+              <Typography variant="h6" fontWeight="bold">
+                Navigation
+              </Typography>
+            </Box>
             <IconButton color="inherit" onClick={handleDrawerToggle(false)}>
               <MenuIcon />
             </IconButton>

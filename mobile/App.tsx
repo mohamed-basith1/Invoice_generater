@@ -3,8 +3,9 @@ global.Buffer = global.Buffer || Buffer;
 
 import React, { useState } from "react";
 import { StatusBar } from "expo-status-bar";
-import { View, StyleSheet, TouchableOpacity, Text } from "react-native";
+import { View, StyleSheet, TouchableOpacity, Text, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import LogoImage from "./assets/logo.png";
 
 // Screens
 import InvoiceScreen from "./src/screens/InvoiceScreen";
@@ -74,7 +75,10 @@ export default function App() {
         <View style={styles.drawer}>
           {/* Header inside drawer */}
           <View style={styles.drawerHeader}>
-            <Text style={styles.drawerHeaderTitle}>Navigation</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Image source={LogoImage} style={{ width: 36, height: 36, borderRadius: 8 }} />
+              <Text style={styles.drawerHeaderTitle}>Navigation</Text>
+            </View>
             <TouchableOpacity onPress={() => setDrawerOpen(false)} style={{ padding: 4 }}>
               <Ionicons name="close" size={24} color="#FFF" />
             </TouchableOpacity>
