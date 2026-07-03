@@ -24,6 +24,7 @@ export interface InvoiceData {
   discount: number;
   rows: InvoiceItem[];
   totalAmount: number;
+  layoutMode?: "new" | "old";
 }
 
 export interface StoredInvoice extends InvoiceData {

@@ -1026,15 +1026,6 @@ const HistoryPage = () => {
               <Typography variant="subtitle2" color="text.secondary" fontWeight="bold">
                 SEARCH & DATE FILTERS
               </Typography>
-              <Button
-                variant="outlined"
-                color="success"
-                startIcon={<DownloadIcon />}
-                onClick={handleExportExcel}
-                sx={{ textTransform: "none", fontWeight: "bold" }}
-              >
-                Export Excel
-              </Button>
             </Box>
             <Box display="flex" gap={2} flexWrap="wrap">
               <Box flex={2} minWidth="200px">

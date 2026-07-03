@@ -28,7 +28,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import LayersIcon from "@mui/icons-material/Layers";
 import CloseIcon from "@mui/icons-material/Close";
 import axios from "axios";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useState, useMemo, useEffect } from "react";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
@@ -106,6 +106,7 @@ const formatCurrency = (value: number) =>
 const InvoicePage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const editId = searchParams.get("edit");
+  const navigate = useNavigate();
 
   const [openInvoiceModal, setOpenInvoiceModal] = useState(false);
   const [openInvoiceEditModal, setOpenInvoiceEditModal] = useState(false);
@@ -595,6 +596,39 @@ const InvoicePage = () => {
     XLSX.writeFile(workbook, filename);
   };
 
+  const handleSaveOnly = async () => {
+    try {
+      const savedDoc = await saveInvoice();
+      setToastMessage(editId ? "Invoice updated successfully!" : "Saved to database successfully!");
+      setToastSeverity("success");
+      setToastOpen(true);
+      
+      if (editId) {
+        setSearchParams({});
+        navigate("/history");
+      } else {
+        // Reset form for new invoice
+        setInvoiceData({
+          customerName: "",
+          invoiceNumber: "",
+          date: dayjs().format("YYYY-MM-DD"),
+          projectName: "",
+          shop: "SZ SIGNAGE",
+          invoiceType: "Signage Work",
+          format: "INVOICE",
+          paidAmount: 0,
+          discount: 0,
+        });
+        setRows([]);
+      }
+    } catch (err) {
+      console.error("Failed to save invoice to MongoDB:", err);
+      setToastMessage(editId ? "Failed to update invoice in database." : "Failed to save invoice to database.");
+      setToastSeverity("error");
+      setToastOpen(true);
+    }
+  };
+
   const handleDownload = async () => {
     try {
       const savedDoc = await saveInvoice();
@@ -1081,6 +1115,14 @@ const InvoicePage = () => {
               Cancel Edit
             </Button>
           )}
+          <Button
+            variant="contained"
+            disabled={rows.length === 0}
+            onClick={handleSaveOnly}
+            sx={{ px: 4, py: 1, borderRadius: 2, textTransform: "none", fontSize: "15px", fontWeight: "bold", bgcolor: "#22B378", "&:hover": { bgcolor: "#1B8F5F" } }}
+          >
+            {editId ? "Save Changes" : "Save Record"}
+          </Button>
           <Button
             variant="contained"
             color="success"

@@ -1068,6 +1068,117 @@ app.get('/api/invoices/:id/pdf', async (req, res) => {
   }
 });
 
+// 8. Bulk Export Invoices to Excel matching current filters
+app.get('/api/invoices/export/excel', async (req, res) => {
+  try {
+    const { shop, format, search, startDate, endDate, paymentStatus } = req.query;
+
+    const filter = {};
+
+    if (shop && shop !== "ALL") {
+      filter.shop = shop;
+    }
+    if (format && format !== "ALL") {
+      filter.format = format;
+    }
+    if (paymentStatus && paymentStatus !== "ALL") {
+      filter.paymentStatus = paymentStatus;
+    }
+    if (search) {
+      filter.$or = [
+        { customerName: { $regex: search, $options: 'i' } },
+        { invoiceNumber: { $regex: search, $options: 'i' } },
+        { projectName: { $regex: search, $options: 'i' } }
+      ];
+    }
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) {
+        filter.date.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        const parsedEndDate = new Date(endDate);
+        parsedEndDate.setHours(23, 59, 59, 999);
+        filter.date.$lte = parsedEndDate;
+      }
+    }
+
+    const invoices = await Invoice.find(filter).sort({ date: -1 });
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Billing Records");
+
+    worksheet.columns = [
+      { header: "Document No", key: "invoiceNumber", width: 18 },
+      { header: "Date", key: "date", width: 12 },
+      { header: "Customer Name", key: "customerName", width: 25 },
+      { header: "Project Name", key: "projectName", width: 20 },
+      { header: "Shop Office", key: "shop", width: 18 },
+      { header: "Document Type", key: "format", width: 15 },
+      { header: "Total Amount (INR)", key: "totalAmount", width: 18 },
+      { header: "Paid Amount (INR)", key: "paidAmount", width: 12 },
+      { header: "Balance Outstanding (INR)", key: "balance", width: 25 },
+      { header: "Payment Status", key: "paymentStatus", width: 15 }
+    ];
+
+    // Style the header row
+    const headerRow = worksheet.getRow(1);
+    headerRow.height = 24;
+    headerRow.eachCell((cell) => {
+      cell.font = { name: "Segoe UI", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF1E1E2D" }
+      };
+      cell.alignment = { vertical: "middle", horizontal: "center" };
+    });
+
+    invoices.forEach((inv) => {
+      const total = inv.totalAmount || 0;
+      const paid = inv.paidAmount || 0;
+      const balance = total - paid;
+
+      const row = worksheet.addRow({
+        invoiceNumber: inv.invoiceNumber,
+        date: dayjs(inv.date).format("YYYY-MM-DD"),
+        customerName: inv.customerName,
+        projectName: inv.projectName || "",
+        shop: inv.shop,
+        format: inv.format,
+        totalAmount: total,
+        paidAmount: paid,
+        balance: balance,
+        paymentStatus: inv.paymentStatus || "UNPAID"
+      });
+
+      row.height = 20;
+      row.eachCell((cell, colIdx) => {
+        cell.font = { name: "Segoe UI", size: 9.5 };
+        if (colIdx === 7 || colIdx === 8 || colIdx === 9) {
+          cell.numFmt = '"₹"#,##0.00';
+          cell.alignment = { vertical: "middle", horizontal: "right" };
+        } else if (colIdx === 2 || colIdx === 5 || colIdx === 6 || colIdx === 10) {
+          cell.alignment = { vertical: "middle", horizontal: "center" };
+        } else {
+          cell.alignment = { vertical: "middle", horizontal: "left" };
+        }
+      });
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const safeShop = (shop || "All").replace(/\s+/g, "_");
+    const filename = `${safeShop}_Export_${dayjs().format("YYYY-MM-DD")}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  } catch (error) {
+    console.error('Error exporting Excel:', error);
+    res.status(500).json({ message: 'Failed to export Excel', error: error.message });
+  }
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', time: new Date() });
