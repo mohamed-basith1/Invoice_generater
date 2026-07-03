@@ -3,6 +3,10 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const ExcelJS = require('exceljs');
 const dayjs = require('dayjs');
+const { jsPDF } = require('jspdf');
+require('jspdf-autotable');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -729,6 +733,337 @@ app.get('/api/invoices/:id/excel', async (req, res) => {
   } catch (error) {
     console.error('Error generating Excel:', error);
     res.status(500).json({ message: 'Failed to generate Excel', error: error.message });
+  }
+});
+
+// 7. Generate and Download PDF Invoice / Quotation using jsPDF (identical to desktop layout)
+app.get('/api/invoices/:id/pdf', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const invoice = await Invoice.findById(id);
+    if (!invoice) {
+      return res.status(404).json({ message: 'Invoice not found' });
+    }
+
+    // Read and construct base64 representation of letterhead templates from the public directory
+    const szImage = 'data:image/jpeg;base64,' + fs.readFileSync(path.join(__dirname, 'public/images/sz_signage.jpg')).toString('base64');
+    const stickerZoneImage = 'data:image/jpeg;base64,' + fs.readFileSync(path.join(__dirname, 'public/images/sticker_zone.jpg')).toString('base64');
+    const szImageQuotation = 'data:image/jpeg;base64,' + fs.readFileSync(path.join(__dirname, 'public/images/sz_signage_quotation.jpg')).toString('base64');
+    const stickerZoneImageQuotation = 'data:image/jpeg;base64,' + fs.readFileSync(path.join(__dirname, 'public/images/sticker_zone_quotation.jpg')).toString('base64');
+
+    const doc = new jsPDF();
+
+    // Add background image
+    const bgImage = invoice.format === "INVOICE"
+      ? invoice.shop === "SZ SIGNAGE"
+        ? szImage
+        : stickerZoneImage
+      : invoice.shop === "SZ SIGNAGE"
+      ? szImageQuotation
+      : stickerZoneImageQuotation;
+
+    doc.addImage(bgImage, "JPEG", 0, 0, 210, 297);
+
+    // Company Header
+    doc.setFontSize(22);
+    doc.setTextColor(255, 255, 255);
+    doc.text(invoice.shop, invoice.shop === "SZ SIGNAGE" ? 28 : 37, 22, {
+      align: "left",
+    });
+    doc.setFontSize(10);
+
+    doc.text(
+      "THE COMPLETE SOLUTION",
+      invoice.shop === "SZ SIGNAGE" ? 28 : 37,
+      27,
+      {
+        align: "left",
+      }
+    );
+
+    doc.setFontSize(8);
+    const addressLine1 = invoice.shop === "SZ SIGNAGE" ? "AYYAMPET,THANJAVUR - 614201" : "AYYAMPET,THANJAVUR - 614201";
+    doc.text(
+      addressLine1,
+      invoice.shop === "SZ SIGNAGE" ? 28 : 37,
+      32.5,
+      {
+        align: "left",
+      }
+    );
+    
+    const phoneText = invoice.shop === "SZ SIGNAGE" ? "Tel: +91 9790343367" : "Tel: +91 9790343367";
+    doc.text(
+      phoneText,
+      invoice.shop === "SZ SIGNAGE" ? 28 : 37,
+      37,
+      { align: "left" }
+    );
+
+    // Invoice Title & Info
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(26);
+    doc.setFont("helvetica", "bold");
+    doc.text(invoice.format, 14, 68);
+
+    // Metadata Grid
+    doc.setFontSize(9);
+    
+    const printMeta = (label, value, xLabel, xVal, y) => {
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(50, 50, 50);
+      doc.text(label, xLabel, y);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(100, 100, 100);
+      doc.text(value || "-", xVal, y);
+    };
+
+    const isInvoice = invoice.format === "INVOICE";
+    printMeta(isInvoice ? "Invoice No:" : "Quotation No:", invoice.invoiceNumber, 14, 42, 78);
+    
+    const capitalizeWords = (str) => {
+      return str
+        .split(" ")
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+    };
+    printMeta("Customer:", capitalizeWords(invoice.customerName), 14, 42, 84);
+    printMeta("Project Name:", invoice.projectName || "-", 14, 42, 90);
+    printMeta("Invoice Type:", invoice.invoiceType || "-", 14, 42, 96);
+
+    // Right column metadata
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(50, 50, 50);
+    doc.text("Date:", 145, 78);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 100, 100);
+    
+    const formatDateToReadable = (isoDateStr) => {
+      const date = new Date(isoDateStr);
+      const day = String(date.getUTCDate()).padStart(2, "0");
+      const month = date.toLocaleString("en-GB", {
+        month: "long",
+        timeZone: "UTC",
+      });
+      const year = date.getUTCFullYear();
+      return `${day} ${month}, ${year}`;
+    };
+    doc.text(formatDateToReadable(invoice.date), 195, 78, { align: "right" });
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(50, 50, 50);
+    doc.text("Shop:", 145, 84);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 100, 100);
+    doc.text(invoice.shop, 195, 84, { align: "right" });
+
+    // Table Headers
+    const isOldLayout = invoice.layoutMode === "old";
+    const headers = isOldLayout
+      ? [[
+          "S.NO",
+          "DESCRIPTION",
+          "QTY",
+          "RATE",
+          "AMOUNT"
+        ]]
+      : [[
+          "S.NO",
+          "DESCRIPTION",
+          "THICKNESS",
+          "SIZE",
+          "UNIT",
+          "AREA",
+          "TYPE",
+          "QTY",
+          "RATE",
+          "AMOUNT"
+        ]];
+
+    // Table Rows
+    const rows = invoice.rows.map((item) => {
+      if (isOldLayout) {
+        return [
+          item.sNo,
+          item.description,
+          item.quantity ? item.quantity : "-",
+          {
+            content: (item.rate !== undefined ? item.rate : 0).toLocaleString("en-IN", {
+              minimumFractionDigits: 2,
+            }),
+            styles: { halign: "right" },
+          },
+          {
+            content: item.amount.toLocaleString("en-IN", {
+              minimumFractionDigits: 2,
+            }),
+            styles: { halign: "right" },
+          },
+        ];
+      } else {
+        return [
+          item.sNo,
+          item.description,
+          item.boardThickness || "-",
+          item.size || "-",
+          item.unit || "-",
+          item.area ? item.area : "-",
+          item.type || "-",
+          item.quantity ? item.quantity : "-",
+          {
+            content: (item.rate !== undefined ? item.rate : 0).toLocaleString("en-IN", {
+              minimumFractionDigits: 2,
+            }),
+            styles: { halign: "right" },
+          },
+          {
+            content: item.amount.toLocaleString("en-IN", {
+              minimumFractionDigits: 2,
+            }),
+            styles: { halign: "right" },
+          },
+        ];
+      }
+    });
+
+    const startY = 110;
+    const firstPageMaxHeight = 140;
+    const approximateRowHeight = 10;
+
+    // Calculate how many rows fit on the first page
+    const rowsOnFirstPage = Math.floor(firstPageMaxHeight / approximateRowHeight);
+    const firstPageRows = rows.slice(0, rowsOnFirstPage);
+    const remainingRows = rows.slice(rowsOnFirstPage);
+
+    const tableStyles = {
+      head: headers,
+      theme: "grid",
+      styles: { fontSize: 7 },
+      headStyles: {
+        fontSize: 7,
+        fillColor: [30, 30, 45],
+        textColor: [255, 255, 255],
+      },
+      columnStyles: isOldLayout
+        ? {
+            0: { cellWidth: 15 },
+            1: { cellWidth: "auto" },
+            2: { cellWidth: 25 },
+            3: { cellWidth: 30, halign: "right" },
+            4: { cellWidth: 35, halign: "right" },
+          }
+        : {
+            0: { cellWidth: 10 },
+            1: { cellWidth: "auto" },
+            2: { cellWidth: 18 },
+            3: { cellWidth: 15 },
+            4: { cellWidth: 14 },
+            5: { cellWidth: 14 },
+            6: { cellWidth: 14 },
+            7: { cellWidth: 12 },
+            8: { cellWidth: 18, halign: "right" },
+            9: { cellWidth: 20, halign: "right" },
+          },
+    };
+
+    // First page table
+    doc.autoTable({
+      ...tableStyles,
+      body: firstPageRows,
+      startY: startY,
+    });
+
+    // Add remaining rows to new pages (if any)
+    if (remainingRows.length > 0) {
+      doc.addPage();
+      doc.autoTable({
+        ...tableStyles,
+        body: remainingRows,
+        startY: 20,
+      });
+    }
+
+    // Summary Section (on the last page)
+    let currentY = doc.lastAutoTable.finalY + 8;
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+
+    const discount = invoice.discount || 0;
+    const paid = invoice.paidAmount || 0;
+    const subTotal = invoice.totalAmount + discount;
+    const balance = Math.max(0, invoice.totalAmount - paid);
+
+    if (discount > 0) {
+      doc.setFont("helvetica", "normal");
+      doc.text(`Subtotal`, 165, currentY, { align: "right" });
+      doc.text(`${subTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, 195, currentY, { align: "right" });
+      
+      currentY += 5;
+      doc.text(`Discount`, 165, currentY, { align: "right" });
+      doc.text(`${discount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, 195, currentY, { align: "right" });
+      
+      currentY += 5;
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.text(`Total`, 165, currentY, { align: "right" });
+    doc.text(`${invoice.totalAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, 195, currentY, { align: "right" });
+
+    if (paid > 0) {
+      currentY += 5;
+      doc.setFont("helvetica", "normal");
+      doc.text(`Paid`, 165, currentY, { align: "right" });
+      doc.text(`${paid.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, 195, currentY, { align: "right" });
+      
+      currentY += 5;
+      doc.setFont("helvetica", "bold");
+      doc.text(`Balance Due`, 165, currentY, { align: "right" });
+      doc.text(`${balance.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, 195, currentY, { align: "right" });
+    }
+
+    // Render bank details / quotation disclaimer on the first page
+    doc.setPage(1);
+
+    doc.setFont("helvetica", "normal");
+    if (invoice.format !== "INVOICE") {
+      doc.setTextColor(255, 0, 0);
+      doc.setFontSize(13);
+      doc.text("INSTALLATION AND TRANSPORT CHARGES ARE EXTRA", 176, 260, {
+        align: "right",
+      });
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(10);
+      doc.text("THANK YOU FOR YOUR BUSINESS!", 139, 270, {
+        align: "right",
+      });
+    } else {
+      doc.setFontSize(9);
+      doc.setTextColor(0, 0, 0);
+      doc.text("A/C NAME      :  UBAIYATHUL JIBRI", 11.5, 258, {
+        align: "left",
+      });
+      doc.text("BANK NAME  :  ICICI BANK", 11.5, 264, {
+        align: "left",
+      });
+      doc.text("A/C NO           :  000101628687", 11.5, 270, {
+        align: "left",
+      });
+      doc.text("IFSC NO         :  ICIC0000001", 11.5, 276, {
+        align: "left",
+      });
+    }
+
+    const safeShop = invoice.shop.replace(/\s+/g, "_");
+    const safeInvNum = invoice.invoiceNumber || "DRAFT";
+    const filename = `${safeShop}_${safeInvNum}.pdf`;
+
+    const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Error generating PDF:', error);
+    res.status(500).json({ message: 'Failed to generate PDF', error: error.message });
   }
 });
 
