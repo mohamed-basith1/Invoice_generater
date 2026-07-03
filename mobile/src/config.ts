@@ -1,0 +1,1 @@
+export const API_URL = "https://invoice-generater-20c3.onrender.com";
