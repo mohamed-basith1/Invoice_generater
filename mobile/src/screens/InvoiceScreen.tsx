@@ -21,6 +21,8 @@ import { Theme } from "../theme";
 import { API_URL } from "../config";
 import { InvoiceData, InvoiceItem } from "../types";
 import { exportInvoicePDF, exportInvoiceExcel } from "../utils/exporters";
+import { CustomAlertModal } from "../components/CustomAlertModal";
+import { DocumentLoadingModal } from "../components/DocumentLoadingModal";
 
 const THICKNESS_OPTIONS = ["", "3 mm", "4 mm", "5 mm", "8 mm", "10 mm", "12 mm", "18 mm", "Other"];
 const UNIT_OPTIONS = ["", "Nos", "Sq.ft", "Running Ft", "Set", "Piece"];
@@ -78,6 +80,42 @@ export default function InvoiceScreen({ navigation, route, onOpenMenu }: any) {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerOptions, setPickerOptions] = useState<string[]>([]);
   const [pickerTitle, setPickerTitle] = useState("");
+
+  // Custom Alert Modal State
+  const [alertConfig, setAlertConfig] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: "info" | "success" | "error" | "warning" | "delete";
+    onConfirm?: () => void;
+    confirmText?: string;
+  }>({
+    visible: false,
+    title: "",
+    message: "",
+    type: "info",
+  });
+
+  const showAlert = (
+    title: string,
+    message: string,
+    type: "info" | "success" | "error" | "warning" | "delete" = "info",
+    onConfirm?: () => void,
+    confirmText?: string
+  ) => {
+    setAlertConfig({
+      visible: true,
+      title,
+      message,
+      type,
+      onConfirm,
+      confirmText,
+    });
+  };
+
+  // Document Generation Loader State
+  const [docLoading, setDocLoading] = useState(false);
+  const [docMessage, setDocMessage] = useState("");
   const [pickerTarget, setPickerTarget] = useState<"thickness" | "unit" | "type" | "invoiceType" | "shop" | "format" | null>(null);
 
   // New Item State
@@ -209,7 +247,7 @@ export default function InvoiceScreen({ navigation, route, onOpenMenu }: any) {
   // Add or edit row
   const handleSaveItem = () => {
     if (!isItemFormValid()) {
-      Alert.alert("Error", "Please fill in all required fields correctly.");
+      showAlert("Error", "Please fill in all required fields correctly.", "warning");
       return;
     }
 
@@ -285,27 +323,26 @@ export default function InvoiceScreen({ navigation, route, onOpenMenu }: any) {
   };
 
   const handleDeleteItem = (index: number) => {
-    Alert.alert("Delete Item", "Are you sure you want to delete this row?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          const filtered = rows.filter((_, i) => i !== index).map((r, i) => ({ ...r, sNo: i + 1 }));
-          setRows(filtered);
-        },
+    showAlert(
+      "Delete Item",
+      "Are you sure you want to delete this row?",
+      "delete",
+      () => {
+        const filtered = rows.filter((_, i) => i !== index).map((r, i) => ({ ...r, sNo: i + 1 }));
+        setRows(filtered);
       },
-    ]);
+      "Delete"
+    );
   };
 
   // Submit Invoice to MongoDB Backend
   const handleSaveInvoice = async () => {
     if (!customerName.trim()) {
-      Alert.alert("Error", "Please configure the invoice metadata details first.");
+      showAlert("Error", "Please configure the invoice metadata details first.", "warning");
       return;
     }
     if (rows.length === 0) {
-      Alert.alert("Error", "Please add at least one item row to the billing list.");
+      showAlert("Error", "Please add at least one item row to the billing list.", "warning");
       return;
     }
 
@@ -336,24 +373,30 @@ export default function InvoiceScreen({ navigation, route, onOpenMenu }: any) {
       });
 
       if (res.ok) {
-        Alert.alert("Success", editingInvoice ? "Billing record updated!" : "Billing record saved!");
-        if (editingInvoice) {
-          navigation.goBack();
-        } else {
-          // Reset form
-          setCustomerName("");
-          setProjectName("");
-          setRows([]);
-          setPaidAmount(0);
-          setDiscount(0);
-          fetchNextInvoiceNumber(shop, format);
-        }
+        showAlert(
+          "Success",
+          editingInvoice ? "Billing record updated!" : "Billing record saved!",
+          "success",
+          () => {
+            if (editingInvoice) {
+              navigation.goBack();
+            } else {
+              // Reset form
+              setCustomerName("");
+              setProjectName("");
+              setRows([]);
+              setPaidAmount(0);
+              setDiscount(0);
+              fetchNextInvoiceNumber(shop, format);
+            }
+          }
+        );
       } else {
         const errorMsg = await res.text();
-        Alert.alert("Error", errorMsg || "Failed to save invoice record.");
+        showAlert("Error", errorMsg || "Failed to save invoice record.", "error");
       }
     } catch (err) {
-      Alert.alert("Error", "Failed to connect to the backend server.");
+      showAlert("Error", "Failed to connect to the backend server.", "error");
     } finally {
       setLoading(false);
     }
@@ -417,24 +460,38 @@ export default function InvoiceScreen({ navigation, route, onOpenMenu }: any) {
               style={[styles.layoutTabBtn, layoutMode === "new" && styles.layoutTabBtnActive]}
               onPress={() => setLayoutMode("new")}
             >
-              <Text style={[styles.layoutTabText, layoutMode === "new" && styles.layoutTabTextActive]}>
-                New Layout
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Ionicons
+                  name={layoutMode === "new" ? "document-text" : "document-text-outline"}
+                  size={15}
+                  color={layoutMode === "new" ? "#22B378" : "#8E8E93"}
+                />
+                <Text style={[styles.layoutTabText, layoutMode === "new" && styles.layoutTabTextActive]}>
+                  New Layout
+                </Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.layoutTabBtn, layoutMode === "old" && styles.layoutTabBtnActive]}
               onPress={() => setLayoutMode("old")}
             >
-              <Text style={[styles.layoutTabText, layoutMode === "old" && styles.layoutTabTextActive]}>
-                Old Layout
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Ionicons
+                  name={layoutMode === "old" ? "copy" : "copy-outline"}
+                  size={15}
+                  color={layoutMode === "old" ? "#22B378" : "#8E8E93"}
+                />
+                <Text style={[styles.layoutTabText, layoutMode === "old" && styles.layoutTabTextActive]}>
+                  Old Layout
+                </Text>
+              </View>
             </TouchableOpacity>
           </View>
 
           {/* Quick buttons */}
           <View style={styles.toolbarActionButtons}>
             <TouchableOpacity style={styles.btnOutline} onPress={() => setMetadataModalVisible(true)}>
-              <Ionicons name="document-text-outline" size={14} color={Theme.colors.primary} />
+              <Ionicons name="create-outline" size={14} color="#1C1C1E" />
               <Text style={styles.btnOutlineText}>{customerName ? "Edit Metadata" : "Create Invoice"}</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -445,7 +502,7 @@ export default function InvoiceScreen({ navigation, route, onOpenMenu }: any) {
                 setItemModalVisible(true);
               }}
             >
-              <Ionicons name="add" size={14} color="#FFF" />
+              <Ionicons name="add" size={16} color="#FFF" />
               <Text style={styles.btnSolidText}>Add Item</Text>
             </TouchableOpacity>
           </View>
@@ -455,51 +512,90 @@ export default function InvoiceScreen({ navigation, route, onOpenMenu }: any) {
           
           {/* 1. Invoice Details Card (1:1 with desktop metadata view) */}
           <View style={styles.detailsCard}>
-            <Text style={styles.detailsCardTitle}>INVOICE METADATA DETAILS</Text>
+            <View style={styles.detailsCardHeader}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="document-text" size={18} color="#22B378" />
+                <Text style={styles.detailsCardTitle}>Invoice Metadata Details</Text>
+              </View>
+              <TouchableOpacity style={styles.detailsEditBtn} onPress={() => setMetadataModalVisible(true)}>
+                <Ionicons name="create-outline" size={14} color="#636366" />
+                <Text style={styles.detailsEditBtnText}>Edit Details</Text>
+              </TouchableOpacity>
+            </View>
             
             <View style={styles.detailsGrid}>
               <View style={styles.gridItem}>
-                <Text style={styles.gridLabel}>Customer Name</Text>
-                <Text style={styles.gridValue}>{customerName || "-"}</Text>
+                <View style={styles.gridIconContainer}>
+                  <Ionicons name="person-outline" size={16} color="#22B378" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.gridLabel}>Customer Name</Text>
+                  <Text style={styles.gridValue}>{customerName || "-"}</Text>
+                </View>
               </View>
 
               <View style={styles.gridItem}>
-                <Text style={styles.gridLabel}>Invoice Number</Text>
-                <Text style={styles.gridValue}>{invoiceNumber || "-"}</Text>
+                <View style={styles.gridIconContainer}>
+                  <Ionicons name="pricetag-outline" size={16} color="#22B378" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.gridLabel}>Invoice Number</Text>
+                  <Text style={styles.gridValue}>{invoiceNumber || "-"}</Text>
+                </View>
               </View>
 
               <View style={styles.gridItem}>
-                <Text style={styles.gridLabel}>Date</Text>
-                <Text style={styles.gridValue}>{date ? dayjs(date).format("DD MMMM YYYY") : "-"}</Text>
+                <View style={styles.gridIconContainer}>
+                  <Ionicons name="calendar-outline" size={16} color="#22B378" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.gridLabel}>Date</Text>
+                  <Text style={styles.gridValue}>{date ? dayjs(date).format("DD MMMM YYYY") : "-"}</Text>
+                </View>
               </View>
 
               <View style={styles.gridItem}>
-                <Text style={styles.gridLabel}>Project Name</Text>
-                <Text style={styles.gridValue}>{projectName || "-"}</Text>
+                <View style={styles.gridIconContainer}>
+                  <Ionicons name="folder-outline" size={16} color="#22B378" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.gridLabel}>Project Name</Text>
+                  <Text style={styles.gridValue}>{projectName || "-"}</Text>
+                </View>
               </View>
 
               <View style={styles.gridItem}>
-                <Text style={styles.gridLabel}>Shop</Text>
-                <Text style={styles.gridValue}>{shop || "-"}</Text>
+                <View style={styles.gridIconContainer}>
+                  <Ionicons name="storefront-outline" size={16} color="#22B378" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.gridLabel}>Shop</Text>
+                  <Text style={styles.gridValue}>{shop || "-"}</Text>
+                </View>
               </View>
 
               <View style={styles.gridItem}>
-                <Text style={styles.gridLabel}>Invoice Type</Text>
-                <Text style={styles.gridValue}>{invoiceType || "-"}</Text>
+                <View style={styles.gridIconContainer}>
+                  <Ionicons name="pricetags-outline" size={16} color="#22B378" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.gridLabel}>Invoice Type</Text>
+                  <Text style={styles.gridValue}>{invoiceType || "-"}</Text>
+                </View>
               </View>
 
               <View style={styles.gridItem}>
-                <Text style={styles.gridLabel}>Invoice / Quotation</Text>
-                <Text style={[styles.gridValue, { fontWeight: "bold", color: format === "INVOICE" ? Theme.colors.secondary : Theme.colors.warning }]}>
-                  {format || "-"}
-                </Text>
+                <View style={styles.gridIconContainer}>
+                  <Ionicons name="document-outline" size={16} color="#22B378" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.gridLabel}>Invoice / Quotation</Text>
+                  <Text style={[styles.gridValue, { fontWeight: "bold", color: format === "INVOICE" ? "#22B378" : Theme.colors.warning }]}>
+                    {format || "-"}
+                  </Text>
+                </View>
               </View>
             </View>
-
-            <TouchableOpacity style={styles.detailsEditBtn} onPress={() => setMetadataModalVisible(true)}>
-              <Ionicons name="create-outline" size={16} color={Theme.colors.primary} />
-              <Text style={styles.detailsEditBtnText}>Edit Details</Text>
-            </TouchableOpacity>
           </View>
 
           {/* Invoice Items List Header */}
@@ -640,14 +736,34 @@ export default function InvoiceScreen({ navigation, route, onOpenMenu }: any) {
               <View style={styles.shareButtonsRow}>
                 <TouchableOpacity
                   style={[styles.shareBtn, { backgroundColor: Theme.colors.primary }]}
-                  onPress={() => exportInvoicePDF(editingInvoice)}
+                  onPress={() =>
+                    exportInvoicePDF(
+                      editingInvoice,
+                      () => {
+                        setDocMessage("Compiling PDF document, please wait for some time...");
+                        setDocLoading(true);
+                      },
+                      () => setDocLoading(false),
+                      (msg) => showAlert("Export Error", msg, "error")
+                    )
+                  }
                 >
                   <Ionicons name="document-text" size={16} color="#FFF" />
                   <Text style={styles.shareBtnText}>PDF</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.shareBtn, { backgroundColor: Theme.colors.success }]}
-                  onPress={() => exportInvoiceExcel(editingInvoice)}
+                  onPress={() =>
+                    exportInvoiceExcel(
+                      editingInvoice,
+                      () => {
+                        setDocMessage("Generating Excel spreadsheet, please wait for some time...");
+                        setDocLoading(true);
+                      },
+                      () => setDocLoading(false),
+                      (msg) => showAlert("Export Error", msg, "error")
+                    )
+                  }
                 >
                   <Ionicons name="grid-outline" size={16} color="#FFF" />
                   <Text style={styles.shareBtnText}>Excel</Text>
@@ -657,226 +773,235 @@ export default function InvoiceScreen({ navigation, route, onOpenMenu }: any) {
           </View>
         </View>
 
-        {/* Modal: Edit Invoice Details Metadata (1:1 with desktop form inputs) */}
-        <Modal visible={metadataModalVisible} animationType="slide" transparent>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContainer}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{editingInvoice ? "Edit Invoice Details" : "Create New Invoice"}</Text>
-                <TouchableOpacity onPress={() => setMetadataModalVisible(false)}>
-                  <Ionicons name="close" size={24} color={Theme.colors.text} />
-                </TouchableOpacity>
-              </View>
+        <Modal visible={metadataModalVisible} animationType="slide" transparent={false}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: "#FFF" }} edges={["top", "bottom"]}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              style={{ flex: 1, backgroundColor: "#FFF" }}
+            >
+              <View style={styles.modalContainer}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>{editingInvoice ? "Edit Invoice Details" : "Create New Invoice"}</Text>
+                  <TouchableOpacity onPress={() => setMetadataModalVisible(false)}>
+                    <Ionicons name="close" size={24} color={Theme.colors.text} />
+                  </TouchableOpacity>
+                </View>
 
-              <ScrollView style={styles.modalScroll}>
-                {/* Format selection */}
-                <Text style={styles.fieldLabel}>Invoice / Quotation</Text>
-                <TouchableOpacity
-                  style={styles.selectInput}
-                  onPress={() => openOptionPicker("Select Format Type", FORMATS, "format")}
-                >
-                  <Text style={styles.selectInputText}>{format}</Text>
-                  <Ionicons name="chevron-down" size={16} color={Theme.colors.textSecondary} />
-                </TouchableOpacity>
+                <ScrollView style={styles.modalScroll}>
+                  {/* Format selection */}
+                  <Text style={styles.fieldLabel}>Invoice / Quotation</Text>
+                  <TouchableOpacity
+                    style={styles.selectInput}
+                    onPress={() => openOptionPicker("Select Format Type", FORMATS, "format")}
+                  >
+                    <Text style={styles.selectInputText}>{format}</Text>
+                    <Ionicons name="chevron-down" size={16} color={Theme.colors.textSecondary} />
+                  </TouchableOpacity>
 
-                {/* Shop choice */}
-                <Text style={styles.fieldLabel}>Shop Office</Text>
-                <TouchableOpacity
-                  style={styles.selectInput}
-                  onPress={() => openOptionPicker("Select Shop Office", SHOPS, "shop")}
-                >
-                  <Text style={styles.selectInputText}>{shop}</Text>
-                  <Ionicons name="chevron-down" size={16} color={Theme.colors.textSecondary} />
-                </TouchableOpacity>
+                  {/* Shop choice */}
+                  <Text style={styles.fieldLabel}>Shop Office</Text>
+                  <TouchableOpacity
+                    style={styles.selectInput}
+                    onPress={() => openOptionPicker("Select Shop Office", SHOPS, "shop")}
+                  >
+                    <Text style={styles.selectInputText}>{shop}</Text>
+                    <Ionicons name="chevron-down" size={16} color={Theme.colors.textSecondary} />
+                  </TouchableOpacity>
 
 
-                {/* Date */}
-                <Text style={styles.fieldLabel}>Date</Text>
-                <TouchableOpacity
-                  style={styles.selectInput}
-                  onPress={() => setShowDatePicker(true)}
-                >
-                  <Text style={styles.selectInputText}>{dayjs(date).format("DD MMMM YYYY")}</Text>
-                  <Ionicons name="calendar-outline" size={16} color={Theme.colors.textSecondary} />
-                </TouchableOpacity>
+                  {/* Date */}
+                  <Text style={styles.fieldLabel}>Date</Text>
+                  <TouchableOpacity
+                    style={styles.selectInput}
+                    onPress={() => setShowDatePicker(true)}
+                  >
+                    <Text style={styles.selectInputText}>{dayjs(date).format("DD MMMM YYYY")}</Text>
+                    <Ionicons name="calendar-outline" size={16} color={Theme.colors.textSecondary} />
+                  </TouchableOpacity>
 
-                {showDatePicker && (
-                  <DateTimePicker
-                    value={dayjs(date, "YYYY-MM-DD").toDate()}
-                    mode="date"
-                    display="default"
-                    onChange={handleDateChange}
+                  {showDatePicker && (
+                    <DateTimePicker
+                      value={dayjs(date, "YYYY-MM-DD").toDate()}
+                      mode="date"
+                      display="default"
+                      onChange={handleDateChange}
+                    />
+                  )}
+
+                  {/* Customer Name */}
+                  <Text style={styles.fieldLabel}>Customer Name</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter customer name"
+                    value={customerName}
+                    onChangeText={setCustomerName}
                   />
-                )}
 
-                {/* Customer Name */}
-                <Text style={styles.fieldLabel}>Customer Name</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter customer name"
-                  value={customerName}
-                  onChangeText={setCustomerName}
-                />
+                  {/* Project Name */}
+                  <Text style={styles.fieldLabel}>Project Name</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Led boards, elevation"
+                    value={projectName}
+                    onChangeText={setProjectName}
+                  />
 
-                {/* Project Name */}
-                <Text style={styles.fieldLabel}>Project Name</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g. Led boards, elevation"
-                  value={projectName}
-                  onChangeText={setProjectName}
-                />
+                  <Text style={styles.fieldLabel}>Invoice Type</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Signage Work, Sticker Work"
+                    value={invoiceType}
+                    onChangeText={setInvoiceType}
+                  />
 
-                <Text style={styles.fieldLabel}>Invoice Type</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g. Signage Work, Sticker Work"
-                  value={invoiceType}
-                  onChangeText={setInvoiceType}
-                />
-
-                <TouchableOpacity style={styles.modalSaveButton} onPress={() => setMetadataModalVisible(false)}>
-                  <Text style={styles.modalSaveButtonText}>{editingInvoice ? "Save Details" : "Create"}</Text>
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
-          </View>
+                  <TouchableOpacity style={styles.modalSaveButton} onPress={() => setMetadataModalVisible(false)}>
+                    <Text style={styles.modalSaveButtonText}>{editingInvoice ? "Save Details" : "Create"}</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+            </KeyboardAvoidingView>
+          </SafeAreaView>
         </Modal>
 
         {/* Modal: Add/Edit Item Row Form (1:1 with desktop columns and conditions) */}
-        <Modal visible={itemModalVisible} animationType="slide" transparent>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContainer}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{editingItemIndex !== null ? "Edit Item" : "Add Item"}</Text>
-                <TouchableOpacity onPress={() => setItemModalVisible(false)}>
-                  <Ionicons name="close" size={24} color={Theme.colors.text} />
-                </TouchableOpacity>
-              </View>
+        <Modal visible={itemModalVisible} animationType="slide" transparent={false}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: "#FFF" }} edges={["top", "bottom"]}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              style={{ flex: 1, backgroundColor: "#FFF" }}
+            >
+              <View style={styles.modalContainer}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>{editingItemIndex !== null ? "Edit Item" : "Add Item"}</Text>
+                  <TouchableOpacity onPress={() => setItemModalVisible(false)}>
+                    <Ionicons name="close" size={24} color={Theme.colors.text} />
+                  </TouchableOpacity>
+                </View>
 
-              <ScrollView style={styles.modalScroll}>
-                {/* Description */}
-                <Text style={styles.fieldLabel}>Description *</Text>
-                <TextInput style={styles.input} value={itemDesc} onChangeText={setItemDesc} placeholder="Signboard Fabrication" />
+                <ScrollView style={styles.modalScroll}>
+                  {/* Description */}
+                  <Text style={styles.fieldLabel}>Description *</Text>
+                  <TextInput style={styles.input} value={itemDesc} onChangeText={setItemDesc} placeholder="Signboard Fabrication" />
 
-                {layoutMode === "new" && (
-                  <>
-                    {/* Board thickness */}
-                    <Text style={styles.fieldLabel}>Board Thickness</Text>
-                    <TouchableOpacity
-                      style={styles.selectInput}
-                      onPress={() => openOptionPicker("Select Thickness Option", THICKNESS_OPTIONS, "thickness")}
-                    >
-                      <Text style={styles.selectInputText}>{itemThickness || "(None/Select)"}</Text>
-                      <Ionicons name="chevron-down" size={16} color={Theme.colors.textSecondary} />
-                    </TouchableOpacity>
+                  {layoutMode === "new" && (
+                    <>
+                      {/* Board thickness */}
+                      <Text style={styles.fieldLabel}>Board Thickness</Text>
+                      <TouchableOpacity
+                        style={styles.selectInput}
+                        onPress={() => openOptionPicker("Select Thickness Option", THICKNESS_OPTIONS, "thickness")}
+                      >
+                        <Text style={styles.selectInputText}>{itemThickness || "(None/Select)"}</Text>
+                        <Ionicons name="chevron-down" size={16} color={Theme.colors.textSecondary} />
+                      </TouchableOpacity>
 
-                    {/* Size */}
-                    <Text style={styles.fieldLabel}>Size</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={itemSize}
-                      onChangeText={(val) => {
-                        setItemSize(val);
-                        const area = parseSizeToArea(val);
-                        if (area !== null) {
-                          setItemArea(area.toString());
-                        }
-                      }}
-                      placeholder="e.g. 10x4"
-                    />
+                      {/* Size */}
+                      <Text style={styles.fieldLabel}>Size</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={itemSize}
+                        onChangeText={(val) => {
+                          setItemSize(val);
+                          const area = parseSizeToArea(val);
+                          if (area !== null) {
+                            setItemArea(area.toString());
+                          }
+                        }}
+                        placeholder="e.g. 10x4"
+                      />
 
-                    {/* Unit */}
-                    <Text style={styles.fieldLabel}>Unit</Text>
-                    <TouchableOpacity
-                      style={styles.selectInput}
-                      onPress={() => openOptionPicker("Select Unit Option", UNIT_OPTIONS, "unit")}
-                    >
-                      <Text style={styles.selectInputText}>{itemUnit === "" ? "(None)" : itemUnit}</Text>
-                      <Ionicons name="chevron-down" size={16} color={Theme.colors.textSecondary} />
-                    </TouchableOpacity>
+                      {/* Unit */}
+                      <Text style={styles.fieldLabel}>Unit</Text>
+                      <TouchableOpacity
+                        style={styles.selectInput}
+                        onPress={() => openOptionPicker("Select Unit Option", UNIT_OPTIONS, "unit")}
+                      >
+                        <Text style={styles.selectInputText}>{itemUnit === "" ? "(None)" : itemUnit}</Text>
+                        <Ionicons name="chevron-down" size={16} color={Theme.colors.textSecondary} />
+                      </TouchableOpacity>
 
-                    {/* Custom material type input toggle block */}
-                    {showCustomType ? (
-                      <View>
-                        <Text style={styles.fieldLabel}>Custom Type *</Text>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                          <TextInput
-                            style={[styles.input, { flex: 1 }]}
-                            value={customTypeInput}
-                            onChangeText={(val) => {
-                              setCustomTypeInput(val);
-                            }}
-                            placeholder="Enter material type"
-                          />
+                      {/* Custom material type input toggle block */}
+                      {showCustomType ? (
+                        <View>
+                          <Text style={styles.fieldLabel}>Custom Type *</Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                            <TextInput
+                              style={[styles.input, { flex: 1 }]}
+                              value={customTypeInput}
+                              onChangeText={(val) => {
+                                setCustomTypeInput(val);
+                              }}
+                              placeholder="Enter material type"
+                            />
+                            <TouchableOpacity
+                              onPress={() => {
+                                setShowCustomType(false);
+                                setCustomTypeInput("");
+                                setItemType("ACP");
+                              }}
+                              style={{ padding: 6, backgroundColor: "#F4F5F7", borderRadius: 6 }}
+                            >
+                              <Ionicons name="close" size={20} color={Theme.colors.textSecondary} />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ) : (
+                        <View>
+                          <Text style={styles.fieldLabel}>Type</Text>
                           <TouchableOpacity
-                            onPress={() => {
-                              setShowCustomType(false);
-                              setCustomTypeInput("");
-                              setItemType("ACP");
-                            }}
-                            style={{ padding: 6, backgroundColor: "#F4F5F7", borderRadius: 6 }}
+                            style={styles.selectInput}
+                            onPress={() => openOptionPicker("Select Type Option", TYPE_OPTIONS, "type")}
                           >
-                            <Ionicons name="close" size={20} color={Theme.colors.textSecondary} />
+                            <Text style={styles.selectInputText}>{itemType || "ACP"}</Text>
+                            <Ionicons name="chevron-down" size={16} color={Theme.colors.textSecondary} />
                           </TouchableOpacity>
                         </View>
-                      </View>
-                    ) : (
-                      <View>
-                        <Text style={styles.fieldLabel}>Type</Text>
-                        <TouchableOpacity
-                          style={styles.selectInput}
-                          onPress={() => openOptionPicker("Select Type Option", TYPE_OPTIONS, "type")}
-                        >
-                          <Text style={styles.selectInputText}>{itemType || "ACP"}</Text>
-                          <Ionicons name="chevron-down" size={16} color={Theme.colors.textSecondary} />
-                        </TouchableOpacity>
-                      </View>
-                    )}
+                      )}
 
-                    {/* Area */}
-                    <Text style={styles.fieldLabel}>
-                      {itemType === "Other" ? "Area (Sq.ft)" : (itemUnit === "Sq.ft" ? "Area (Sq.ft) *" : "Area (Sq.ft)")}
-                    </Text>
-                    <TextInput style={styles.input} keyboardType="numeric" value={itemArea} onChangeText={setItemArea} placeholder="40" />
-                  </>
-                )}
+                      {/* Area */}
+                      <Text style={styles.fieldLabel}>
+                        {itemType === "Other" ? "Area (Sq.ft)" : (itemUnit === "Sq.ft" ? "Area (Sq.ft) *" : "Area (Sq.ft)")}
+                      </Text>
+                      <TextInput style={styles.input} keyboardType="numeric" value={itemArea} onChangeText={setItemArea} placeholder="40" />
+                    </>
+                  )}
 
-                {/* Quantity */}
-                <Text style={styles.fieldLabel}>
-                  {layoutMode === "old" ? "Quantity *" : (itemType === "Other" ? "Quantity" : (itemUnit !== "Sq.ft" ? "Quantity *" : "Quantity"))}
-                </Text>
-                <TextInput style={styles.input} keyboardType="numeric" value={itemQty} onChangeText={setItemQty} />
+                  {/* Quantity */}
+                  <Text style={styles.fieldLabel}>
+                    {layoutMode === "old" ? "Quantity *" : (itemType === "Other" ? "Quantity" : (itemUnit !== "Sq.ft" ? "Quantity *" : "Quantity"))}
+                  </Text>
+                  <TextInput style={styles.input} keyboardType="numeric" value={itemQty} onChangeText={setItemQty} />
 
-                {/* Rate */}
-                <Text style={styles.fieldLabel}>
-                  {layoutMode === "old" ? "Rate (INR) *" : (itemType === "Other" ? "Rate (INR)" : "Rate (INR) *")}
-                </Text>
-                <TextInput style={styles.input} keyboardType="numeric" value={itemRate} onChangeText={setItemRate} placeholder="120" />
+                  {/* Rate */}
+                  <Text style={styles.fieldLabel}>
+                    {layoutMode === "old" ? "Rate (INR) *" : (itemType === "Other" ? "Rate (INR)" : "Rate (INR) *")}
+                  </Text>
+                  <TextInput style={styles.input} keyboardType="numeric" value={itemRate} onChangeText={setItemRate} placeholder="120" />
 
-                {/* Amount */}
-                <Text style={styles.fieldLabel}>
-                  {layoutMode === "new" && itemType === "Other" ? "Amount *" : "Amount"}
-                </Text>
-                <TextInput
-                  style={[styles.input, (layoutMode === "new" && itemType !== "Other") && styles.inputReadonly]}
-                  keyboardType="numeric"
-                  editable={layoutMode === "old" || itemType === "Other"}
-                  value={layoutMode === "new" && itemType !== "Other" ? formatCurrency(computedAmount()) : itemAmount}
-                  onChangeText={setItemAmount}
-                  placeholder="Auto-calculated"
-                />
+                  {/* Amount */}
+                  <Text style={styles.fieldLabel}>
+                    {layoutMode === "new" && itemType === "Other" ? "Amount *" : "Amount"}
+                  </Text>
+                  <TextInput
+                    style={[styles.input, (layoutMode === "new" && itemType !== "Other") && styles.inputReadonly]}
+                    keyboardType="numeric"
+                    editable={layoutMode === "old" || itemType === "Other"}
+                    value={layoutMode === "new" && itemType !== "Other" ? formatCurrency(computedAmount()) : itemAmount}
+                    onChangeText={setItemAmount}
+                    placeholder="Auto-calculated"
+                  />
 
-                <TouchableOpacity
-                  style={[styles.modalSaveButton, !isItemFormValid() && { opacity: 0.5 }]}
-                  disabled={!isItemFormValid()}
-                  onPress={handleSaveItem}
-                >
-                  <Text style={styles.modalSaveButtonText}>{editingItemIndex !== null ? "Save" : "Add"}</Text>
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
-          </View>
+                  <TouchableOpacity
+                    style={[styles.modalSaveButton, !isItemFormValid() && { opacity: 0.5 }]}
+                    disabled={!isItemFormValid()}
+                    onPress={handleSaveItem}
+                  >
+                    <Text style={styles.modalSaveButtonText}>{editingItemIndex !== null ? "Save" : "Add"}</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+            </KeyboardAvoidingView>
+          </SafeAreaView>
         </Modal>
 
         {/* Options Selection Dropdown Overlay Picker */}
@@ -899,6 +1024,18 @@ export default function InvoiceScreen({ navigation, route, onOpenMenu }: any) {
             </View>
           </View>
         </Modal>
+
+        <CustomAlertModal
+          visible={alertConfig.visible}
+          title={alertConfig.title}
+          message={alertConfig.message}
+          type={alertConfig.type}
+          confirmText={alertConfig.confirmText}
+          onClose={() => setAlertConfig((prev) => ({ ...prev, visible: false }))}
+          onConfirm={alertConfig.onConfirm}
+        />
+
+        <DocumentLoadingModal visible={docLoading} message={docMessage} />
 
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -952,60 +1089,61 @@ const styles = StyleSheet.create({
     backgroundColor: "#F4F5F7",
     borderRadius: 8,
     padding: 3,
-    width: "48%",
+    width: "50%",
   },
   layoutTabBtn: {
     flex: 1,
-    paddingVertical: 6,
+    paddingVertical: 8,
     alignItems: "center",
     borderRadius: 6,
   },
   layoutTabBtnActive: {
     backgroundColor: "#FFF",
-    elevation: 1,
+    elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
-    shadowRadius: 1,
+    shadowRadius: 2,
   },
   layoutTabText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: "bold",
-    color: Theme.colors.textSecondary,
+    color: "#8E8E93",
   },
   layoutTabTextActive: {
-    color: Theme.colors.primary,
+    color: "#22B378",
   },
   toolbarActionButtons: {
     flexDirection: "row",
     gap: 8,
+    width: "50%",
+    justifyContent: "flex-end",
   },
   btnOutline: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    borderWidth: 1,
-    borderColor: Theme.colors.primary,
+    backgroundColor: "#F4F5F7",
     borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   btnOutlineText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: "bold",
-    color: Theme.colors.primary,
+    color: "#1C1C1E",
   },
   btnSolid: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: Theme.colors.primary,
+    backgroundColor: "#22B378",
     borderRadius: 6,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 8,
   },
   btnSolidText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: "bold",
     color: "#FFF",
   },
@@ -1014,61 +1152,69 @@ const styles = StyleSheet.create({
   },
   detailsCard: {
     backgroundColor: "#FFF",
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: Theme.colors.border,
-    padding: 12,
+    padding: 16,
     marginBottom: 16,
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    position: "relative",
+  },
+  detailsCardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F4F5F7",
+    paddingBottom: 10,
   },
   detailsCardTitle: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "bold",
-    color: Theme.colors.textSecondary,
-    marginBottom: 10,
-    letterSpacing: 0.5,
+    color: "#1E1E2D",
   },
   detailsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    rowGap: 10,
+    rowGap: 16,
   },
   gridItem: {
     width: "50%",
-    paddingRight: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  gridIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(34, 179, 120, 0.06)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   gridLabel: {
     fontSize: 11,
     fontWeight: "bold",
     color: Theme.colors.textSecondary,
-    textTransform: "uppercase",
   },
   gridValue: {
-    fontSize: 14,
+    fontSize: 13.5,
+    fontWeight: "bold",
     color: Theme.colors.text,
-    marginTop: 2,
+    marginTop: 1,
   },
   detailsEditBtn: {
-    position: "absolute",
-    top: 10,
-    right: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     backgroundColor: "#F4F5F7",
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 4,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   detailsEditBtnText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: "bold",
-    color: Theme.colors.primary,
+    color: "#636366",
   },
   itemsListTitle: {
     fontSize: 16,
@@ -1156,11 +1302,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Theme.colors.border,
     padding: 8,
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 1.5,
   },
   summaryTitle: {
     fontSize: 14,
@@ -1255,15 +1396,12 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
-    justifyContent: "flex-end",
+    backgroundColor: "#FFF",
   },
   modalContainer: {
     backgroundColor: "#FFF",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+    flex: 1,
     padding: 20,
-    maxHeight: "85%",
   },
   modalHeader: {
     flexDirection: "row",
@@ -1280,22 +1418,22 @@ const styles = StyleSheet.create({
     color: Theme.colors.primary,
   },
   modalScroll: {
-    marginBottom: 20,
+    marginBottom: 0,
   },
   fieldLabel: {
     fontSize: 13,
     fontWeight: "bold",
     color: Theme.colors.textSecondary,
-    marginTop: 10,
-    marginBottom: 5,
+    marginTop: 16,
+    marginBottom: 6,
     textTransform: "uppercase",
   },
   input: {
     borderWidth: 1,
     borderColor: Theme.colors.border,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     fontSize: 15,
     color: Theme.colors.text,
     backgroundColor: "#FFF",
@@ -1310,9 +1448,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     borderColor: Theme.colors.border,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     backgroundColor: "#FFF",
   },
   selectInputText: {
@@ -1347,15 +1485,15 @@ const styles = StyleSheet.create({
   },
   modalSaveButton: {
     backgroundColor: Theme.colors.secondary,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderRadius: 8,
     alignItems: "center",
-    marginTop: 20,
+    marginTop: 24,
   },
   modalSaveButtonText: {
     color: "#FFF",
     fontWeight: "bold",
-    fontSize: 15,
+    fontSize: 16,
   },
   pickerOverlay: {
     flex: 1,

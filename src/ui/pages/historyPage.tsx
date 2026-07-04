@@ -215,9 +215,9 @@ const HistoryPage = () => {
       };
 
       setRightHeaderCell(3, invoice.shop, true, 11);
-      setRightHeaderCell(4, "No 12, Main Street Road", false, 9.5);
-      setRightHeaderCell(5, "Ayyampet, Thanjavur - 614201", false, 9.5);
-      setRightHeaderCell(6, "Phone: +91 9790343367", false, 9.5);
+      setRightHeaderCell(4, "Ayyampet, Thanjavur - 614201", false, 9.5);
+      setRightHeaderCell(5, "Phone: +91 9790343367", false, 9.5);
+      setRightHeaderCell(6, "", false, 9.5);
 
       // Set heights for the header rows (row 2 and 7 are empty spacers for symmetric vertical padding)
       worksheet.getRow(2).height = 20; // Top padding

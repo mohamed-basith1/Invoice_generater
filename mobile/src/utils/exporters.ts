@@ -1,14 +1,19 @@
 import * as Sharing from "expo-sharing";
 import { documentDirectory, downloadAsync } from "expo-file-system/src/legacy/FileSystem";
-import { Alert } from "react-native";
 import { StoredInvoice } from "../types";
 import { API_URL } from "../config";
 
 // ==========================================
 // 1. PDF EXPORTER (OFFLOADED TO BACKEND)
 // ==========================================
-export const exportInvoicePDF = async (invoice: StoredInvoice) => {
+export const exportInvoicePDF = async (
+  invoice: StoredInvoice,
+  onStart?: () => void,
+  onComplete?: () => void,
+  onError?: (msg: string) => void
+) => {
   try {
+    if (onStart) onStart();
     const url = `${API_URL}/api/invoices/${invoice._id}/pdf`;
     const safeShop = invoice.shop.replace(/\s+/g, "_");
     const safeInvNum = invoice.invoiceNumber || "DRAFT";
@@ -17,10 +22,12 @@ export const exportInvoicePDF = async (invoice: StoredInvoice) => {
 
     const downloadRes = await downloadAsync(url, targetUri);
     if (downloadRes.status !== 200) {
-      Alert.alert("Error", "Failed to generate PDF file on server.");
+      if (onComplete) onComplete();
+      if (onError) onError("Failed to generate PDF file on the server.");
       return;
     }
 
+    if (onComplete) onComplete();
     // Share PDF using Native Sharing dialog
     await Sharing.shareAsync(targetUri, {
       mimeType: "application/pdf",
@@ -28,15 +35,22 @@ export const exportInvoicePDF = async (invoice: StoredInvoice) => {
       UTI: "com.adobe.pdf",
     });
   } catch (err) {
-    Alert.alert("Error", "Failed to download invoice PDF.");
+    if (onComplete) onComplete();
+    if (onError) onError("Failed to download invoice PDF.");
   }
 };
 
 // ==========================================
 // 2. EXCEL EXPORTER (OFFLOADED TO BACKEND)
 // ==========================================
-export const exportInvoiceExcel = async (invoice: StoredInvoice) => {
+export const exportInvoiceExcel = async (
+  invoice: StoredInvoice,
+  onStart?: () => void,
+  onComplete?: () => void,
+  onError?: (msg: string) => void
+) => {
   try {
+    if (onStart) onStart();
     const url = `${API_URL}/api/invoices/${invoice._id}/excel`;
     const safeShop = invoice.shop.replace(/\s+/g, "_");
     const safeInvNum = invoice.invoiceNumber || "DRAFT";
@@ -45,10 +59,12 @@ export const exportInvoiceExcel = async (invoice: StoredInvoice) => {
 
     const downloadRes = await downloadAsync(url, targetUri);
     if (downloadRes.status !== 200) {
-      Alert.alert("Error", "Failed to generate Excel file on server.");
+      if (onComplete) onComplete();
+      if (onError) onError("Failed to generate Excel file on the server.");
       return;
     }
 
+    if (onComplete) onComplete();
     // Trigger Native Share Dialog
     await Sharing.shareAsync(targetUri, {
       mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -56,6 +72,7 @@ export const exportInvoiceExcel = async (invoice: StoredInvoice) => {
       UTI: "com.microsoft.excel.xlsx",
     });
   } catch (err) {
-    Alert.alert("Error", "Failed to download invoice Excel sheet.");
+    if (onComplete) onComplete();
+    if (onError) onError("Failed to download invoice Excel sheet.");
   }
 };

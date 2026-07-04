@@ -24,6 +24,8 @@ import { StoredInvoice } from "../types";
 import { exportInvoicePDF, exportInvoiceExcel } from "../utils/exporters";
 import { documentDirectory, downloadAsync } from "expo-file-system/src/legacy/FileSystem";
 import * as Sharing from "expo-sharing";
+import { CustomAlertModal } from "../components/CustomAlertModal";
+import { DocumentLoadingModal } from "../components/DocumentLoadingModal";
 
 const SHOPS = ["SZ SIGNAGE", "STICKER ZONE"];
 const FORMATS = ["ALL", "INVOICE", "QUOTATION"];
@@ -55,6 +57,42 @@ export default function HistoryScreen({ navigation, onOpenMenu }: any) {
   const [quickPayOpen, setQuickPayOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<StoredInvoice | null>(null);
   const [quickPayAmount, setQuickPayAmount] = useState("");
+
+  // Custom Alert Modal State
+  const [alertConfig, setAlertConfig] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: "info" | "success" | "error" | "warning" | "delete";
+    onConfirm?: () => void;
+    confirmText?: string;
+  }>({
+    visible: false,
+    title: "",
+    message: "",
+    type: "info",
+  });
+
+  const showAlert = (
+    title: string,
+    message: string,
+    type: "info" | "success" | "error" | "warning" | "delete" = "info",
+    onConfirm?: () => void,
+    confirmText?: string
+  ) => {
+    setAlertConfig({
+      visible: true,
+      title,
+      message,
+      type,
+      onConfirm,
+      confirmText,
+    });
+  };
+
+  // Document Generation Loader State
+  const [docLoading, setDocLoading] = useState(false);
+  const [docMessage, setDocMessage] = useState("");
 
   // Fetch invoices with all active filters
   const fetchInvoices = async (showLoadingIndicator = true) => {
@@ -137,7 +175,7 @@ export default function HistoryScreen({ navigation, onOpenMenu }: any) {
     if (!selectedInvoice) return;
     const paidVal = parseFloat(quickPayAmount || "0");
     if (isNaN(paidVal) || paidVal < 0) {
-      Alert.alert("Invalid Input", "Please enter a valid non-negative number.");
+      showAlert("Invalid Input", "Please enter a valid non-negative number.", "warning");
       return;
     }
 
@@ -158,37 +196,36 @@ export default function HistoryScreen({ navigation, onOpenMenu }: any) {
         setSelectedInvoice(null);
         fetchInvoices(false);
       } else {
-        Alert.alert("Error", "Failed to update payment details on server.");
+        showAlert("Error", "Failed to update payment details on the server.", "error");
       }
     } catch (err) {
-      Alert.alert("Error", "Server communication failed.");
+      showAlert("Error", "Server communication failed.", "error");
     }
   };
 
   // Delete invoice
   const handleDeleteInvoice = (id: string) => {
-    Alert.alert("Delete Invoice", "Are you sure you want to permanently delete this billing record?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            const res = await fetch(`${API_URL}/api/invoices/${id}`, {
-              method: "DELETE",
-            });
-            if (res.ok) {
-              setInvoices(invoices.filter((inv) => inv._id !== id));
-              fetchInvoices(false);
-            } else {
-              Alert.alert("Error", "Failed to delete from database");
-            }
-          } catch (err) {
-            Alert.alert("Error", "Server connection failed");
+    showAlert(
+      "Are you sure?",
+      "Do you really want to delete this billing record? This action will permanently remove it from the database.",
+      "delete",
+      async () => {
+        try {
+          const res = await fetch(`${API_URL}/api/invoices/${id}`, {
+            method: "DELETE",
+          });
+          if (res.ok) {
+            setInvoices(invoices.filter((inv) => inv._id !== id));
+            fetchInvoices(false);
+          } else {
+            showAlert("Error", "Failed to delete the record from the database.", "error");
           }
-        },
+        } catch (err) {
+          showAlert("Error", "Server connection failed.", "error");
+        }
       },
-    ]);
+      "Delete"
+    );
   };
 
   // Bulk Export Excel
@@ -196,16 +233,16 @@ export default function HistoryScreen({ navigation, onOpenMenu }: any) {
     try {
       let query = `?shop=${encodeURIComponent(selectedShop)}`;
       if (selectedFormat !== "ALL") {
-        query += `&format=${encodeURIComponent(selectedFormat)}`;
+        query += `&format=${selectedFormat}`;
       }
       if (selectedStatus !== "ALL") {
-        query += `&paymentStatus=${encodeURIComponent(selectedStatus)}`;
+        query += `&status=${selectedStatus}`;
       }
       if (startDate) {
-        query += `&startDate=${encodeURIComponent(dayjs(startDate).startOf("day").toISOString())}`;
+        query += `&startDate=${dayjs(startDate).startOf("day").toISOString()}`;
       }
       if (endDate) {
-        query += `&endDate=${encodeURIComponent(dayjs(endDate).endOf("day").toISOString())}`;
+        query += `&endDate=${dayjs(endDate).endOf("day").toISOString()}`;
       }
       if (search.trim()) {
         query += `&search=${encodeURIComponent(search)}`;
@@ -215,10 +252,13 @@ export default function HistoryScreen({ navigation, onOpenMenu }: any) {
       const filename = `${selectedShop.replace(/\s+/g, "_")}_Export_${dayjs().format("YYYY-MM-DD")}.xlsx`;
       const targetUri = `${documentDirectory}${filename}`;
 
-      setLoading(true);
+      setDocMessage("Generating bulk Excel report, please wait for some time...");
+      setDocLoading(true);
       const downloadRes = await downloadAsync(url, targetUri);
+      setDocLoading(false);
+      
       if (downloadRes.status !== 200) {
-        Alert.alert("Error", "Failed to export Excel report from server.");
+        showAlert("Error", "Failed to export Excel report from the server.", "error");
         return;
       }
 
@@ -230,9 +270,9 @@ export default function HistoryScreen({ navigation, onOpenMenu }: any) {
       });
     } catch (err) {
       console.error("Bulk export failed:", err);
-      Alert.alert("Error", "Export action failed.");
+      showAlert("Error", "Export action failed.", "error");
     } finally {
-      setLoading(false);
+      setDocLoading(false);
     }
   };
 
@@ -287,44 +327,63 @@ export default function HistoryScreen({ navigation, onOpenMenu }: any) {
         {/* 1. Summary Statistics Bar (Horizontal single row layout) */}
         <View style={styles.analyticsBar}>
           {/* Card 1: Total Revenue */}
-          <View style={[styles.analyticsCard, { backgroundColor: "#1E1E2D", flex: 1 }]}>
-            <View style={styles.analyticsRowHeader}>
-              <Text style={styles.analyticsLabel} numberOfLines={1}>REVENUE</Text>
-              <Ionicons name="trending-up" size={12} color="#22b378" />
+          <View style={[styles.analyticsCard, { backgroundColor: "#E8F7F0", flex: 1, flexDirection: "row", alignItems: "center", gap: 8, padding: 8 }]}>
+            <View style={[styles.analyticsIconContainer, { backgroundColor: "#22B378" }]}>
+              <Ionicons name="trending-up" size={16} color="#FFF" />
             </View>
-            <Text style={styles.analyticsValue} numberOfLines={1}>
-              ₹{totalRevenue.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-            </Text>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <Text style={[styles.analyticsLabel, { color: "#636366" }]} numberOfLines={1}>REVENUE</Text>
+                <Ionicons name="trending-up" size={12} color="#22B378" />
+              </View>
+              <Text style={[styles.analyticsValue, { color: "#1C1C1E" }]} numberOfLines={1}>
+                ₹{totalRevenue.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+              </Text>
+              <Text style={{ fontSize: 9, color: "#636366" }}>Total revenue</Text>
+            </View>
           </View>
 
           {/* Card 2: Total Collected */}
-          <View style={[styles.analyticsCard, { backgroundColor: "#2E7D32", flex: 1 }]}>
-            <View style={styles.analyticsRowHeader}>
-              <Text style={styles.analyticsLabel} numberOfLines={1}>COLLECTED</Text>
-              <Ionicons name="trending-up" size={12} color="#a5d6a7" />
+          <View style={[styles.analyticsCard, { backgroundColor: "#E8F7F0", flex: 1, flexDirection: "row", alignItems: "center", gap: 8, padding: 8 }]}>
+            <View style={[styles.analyticsIconContainer, { backgroundColor: "#22B378" }]}>
+              <Ionicons name="wallet-outline" size={16} color="#FFF" />
             </View>
-            <Text style={styles.analyticsValue} numberOfLines={1}>
-              ₹{totalPaid.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-            </Text>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <Text style={[styles.analyticsLabel, { color: "#636366" }]} numberOfLines={1}>COLLECTED</Text>
+                <Ionicons name="trending-up" size={12} color="#22B378" />
+              </View>
+              <Text style={[styles.analyticsValue, { color: "#1C1C1E" }]} numberOfLines={1}>
+                ₹{totalPaid.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+              </Text>
+              <Text style={{ fontSize: 9, color: "#636366" }}>Total collected</Text>
+            </View>
           </View>
 
           {/* Card 3: Outstanding Dues */}
-          <View style={[styles.analyticsCard, { backgroundColor: "#C62828", flex: 1 }]}>
-            <View style={styles.analyticsRowHeader}>
-              <Text style={styles.analyticsLabel} numberOfLines={1}>DUES</Text>
-              <Ionicons name="trending-up" size={12} color="#ff8a80" />
+          <View style={[styles.analyticsCard, { backgroundColor: "#FDECEE", flex: 1, flexDirection: "row", alignItems: "center", gap: 8, padding: 8 }]}>
+            <View style={[styles.analyticsIconContainer, { backgroundColor: "#D32F2F" }]}>
+              <Ionicons name="receipt-outline" size={16} color="#FFF" />
             </View>
-            <Text style={styles.analyticsValue} numberOfLines={1}>
-              ₹{totalBalance.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-            </Text>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <Text style={[styles.analyticsLabel, { color: "#636366" }]} numberOfLines={1}>DUES</Text>
+                <Ionicons name="trending-up" size={12} color="#D32F2F" />
+              </View>
+              <Text style={[styles.analyticsValue, { color: "#1C1C1E" }]} numberOfLines={1}>
+                ₹{totalBalance.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+              </Text>
+              <Text style={{ fontSize: 9, color: "#636366" }}>Total dues</Text>
+            </View>
           </View>
         </View>
 
         {/* Scrollable Filters Block */}
-        <ScrollView style={styles.filtersBlock} horizontal={false} showsVerticalScrollIndicator={false}>
+        <View style={styles.filtersCard}>
           {/* Filters Bar Toolbar Header */}
           <View style={styles.filterToolbarHeader}>
-            <Text style={styles.filterToolbarHeaderLabel}>SEARCH & DATE FILTERS</Text>
+            <Ionicons name="search-outline" size={16} color="#22B378" />
+            <Text style={styles.filterToolbarHeaderLabel}>SEARCH & FILTERS</Text>
           </View>
 
           {/* Search Input Bar */}
@@ -391,19 +450,27 @@ export default function HistoryScreen({ navigation, onOpenMenu }: any) {
             <Text style={styles.datePickerLabel}>Date Range:</Text>
             <View style={styles.dateButtonsContainer}>
               <TouchableOpacity style={styles.dateSelectBtn} onPress={() => setShowStartPicker(true)}>
-                <Text style={styles.dateSelectBtnText}>
-                  {startDate ? dayjs(startDate).format("DD MMM YYYY") : "From Date"}
-                </Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Ionicons name="calendar-outline" size={14} color="#636366" />
+                  <Text style={styles.dateSelectBtnText}>
+                    {startDate ? dayjs(startDate).format("DD MMM YYYY") : "From Date"}
+                  </Text>
+                  <Ionicons name="chevron-down" size={12} color="#636366" />
+                </View>
               </TouchableOpacity>
-              <Text style={styles.dateSeparator}>to</Text>
+              <Text style={[styles.dateSeparator, { textTransform: "uppercase", fontSize: 11, fontWeight: "bold", color: "#8E8E93" }]}>TO</Text>
               <TouchableOpacity style={styles.dateSelectBtn} onPress={() => setShowEndPicker(true)}>
-                <Text style={styles.dateSelectBtnText}>
-                  {endDate ? dayjs(endDate).format("DD MMM YYYY") : "To Date"}
-                </Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Ionicons name="calendar-outline" size={14} color="#636366" />
+                  <Text style={styles.dateSelectBtnText}>
+                    {endDate ? dayjs(endDate).format("DD MMM YYYY") : "To Date"}
+                  </Text>
+                  <Ionicons name="chevron-down" size={12} color="#636366" />
+                </View>
               </TouchableOpacity>
             </View>
           </View>
-        </ScrollView>
+        </View>
 
         {/* Date Picker Modals */}
         {showStartPicker && (
@@ -434,8 +501,15 @@ export default function HistoryScreen({ navigation, onOpenMenu }: any) {
             contentContainerStyle={styles.emptyContainer}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
           >
-            <Ionicons name="file-tray-outline" size={50} color={Theme.colors.textSecondary} />
-            <Text style={styles.emptyText}>No records found matching your active filter criteria.</Text>
+            <Ionicons name="search-outline" size={50} color="#8E8E93" style={{ marginBottom: 12 }} />
+            <Text style={{ fontSize: 16, fontWeight: "bold", color: "#1C1C1E", marginBottom: 6 }}>No records found</Text>
+            <Text style={[styles.emptyText, { textAlign: "center", color: "#636366", paddingHorizontal: 30, marginBottom: 20 }]}>
+              We couldn't find any records matching your active filter criteria.
+            </Text>
+            <TouchableOpacity style={styles.clearFiltersBtnEmpty} onPress={handleClearFilters}>
+              <Ionicons name="search" size={14} color="#FFF" />
+              <Text style={styles.clearFiltersBtnEmptyText}>Clear Filters</Text>
+            </TouchableOpacity>
           </ScrollView>
         ) : (
           <View style={styles.tableWrapper}>
@@ -530,10 +604,36 @@ export default function HistoryScreen({ navigation, onOpenMenu }: any) {
                           <TouchableOpacity style={styles.tableActionBtn} onPress={() => openQuickPay(item)}>
                             <Ionicons name="cash-outline" size={14} color="#D27D2D" />
                           </TouchableOpacity>
-                          <TouchableOpacity style={styles.tableActionBtn} onPress={() => exportInvoicePDF(item)}>
+                          <TouchableOpacity
+                            style={styles.tableActionBtn}
+                            onPress={() =>
+                              exportInvoicePDF(
+                                item,
+                                () => {
+                                  setDocMessage("Compiling PDF document, please wait for some time...");
+                                  setDocLoading(true);
+                                },
+                                () => setDocLoading(false),
+                                (msg) => showAlert("Export Error", msg, "error")
+                              )
+                            }
+                          >
                             <Ionicons name="document-text-outline" size={14} color={Theme.colors.primary} />
                           </TouchableOpacity>
-                          <TouchableOpacity style={styles.tableActionBtn} onPress={() => exportInvoiceExcel(item)}>
+                          <TouchableOpacity
+                            style={styles.tableActionBtn}
+                            onPress={() =>
+                              exportInvoiceExcel(
+                                item,
+                                () => {
+                                  setDocMessage("Generating Excel spreadsheet, please wait for some time...");
+                                  setDocLoading(true);
+                                },
+                                () => setDocLoading(false),
+                                (msg) => showAlert("Export Error", msg, "error")
+                              )
+                            }
+                          >
                             <Ionicons name="grid-outline" size={14} color={Theme.colors.success} />
                           </TouchableOpacity>
                           <TouchableOpacity style={styles.tableActionBtn} onPress={() => handleDeleteInvoice(item._id)}>
@@ -616,6 +716,18 @@ export default function HistoryScreen({ navigation, onOpenMenu }: any) {
           </View>
         </Modal>
 
+        <CustomAlertModal
+          visible={alertConfig.visible}
+          title={alertConfig.title}
+          message={alertConfig.message}
+          type={alertConfig.type}
+          confirmText={alertConfig.confirmText}
+          onClose={() => setAlertConfig((prev) => ({ ...prev, visible: false }))}
+          onConfirm={alertConfig.onConfirm}
+        />
+
+        <DocumentLoadingModal visible={docLoading} message={docMessage} />
+
       </View>
     </SafeAreaView>
   );
@@ -683,11 +795,13 @@ const styles = StyleSheet.create({
   analyticsCard: {
     borderRadius: 8,
     padding: 8,
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1.5,
+  },
+  analyticsIconContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
   },
   analyticsRowHeader: {
     flexDirection: "row",
@@ -695,17 +809,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   analyticsLabel: {
-    fontSize: 11.5,
-    color: "#FFF",
+    color: "#636366",
+    fontSize: 9,
     fontWeight: "bold",
-    opacity: 0.8,
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   analyticsValue: {
-    fontSize: 22,
+    fontSize: 13.5,
     fontWeight: "bold",
-    marginTop: 6,
-    color: "#FFF",
+    marginTop: 1,
   },
   analyticsCaption: {
     fontSize: 10,
@@ -713,26 +825,25 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     marginTop: 4,
   },
-  filtersBlock: {
+  filtersCard: {
     backgroundColor: "#FFF",
-    maxHeight: 185,
-    borderBottomWidth: 1,
-    borderBottomColor: Theme.colors.border,
-    paddingBottom: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    padding: 16,
+    marginHorizontal: 12,
+    marginVertical: 12,
   },
   filterToolbarHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 12,
-    marginTop: 8,
-    marginBottom: 4,
+    gap: 6,
+    marginBottom: 12,
   },
   filterToolbarHeaderLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "bold",
-    color: Theme.colors.textSecondary,
-    letterSpacing: 0.5,
+    color: "#1C1C1E",
   },
   exportExcelBtn: {
     flexDirection: "row",
@@ -753,10 +864,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#F4F5F7",
-    marginHorizontal: 12,
-    marginVertical: 4,
+    marginBottom: 16,
     borderRadius: 8,
     paddingHorizontal: 10,
+    height: 40,
   },
   searchIcon: {
     marginRight: 6,
@@ -773,75 +884,93 @@ const styles = StyleSheet.create({
   filterRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    marginVertical: 3,
+    marginVertical: 6,
   },
   filterRowLabel: {
     fontSize: 13,
     fontWeight: "bold",
-    color: Theme.colors.text,
-    width: 60,
+    color: "#1C1C1E",
+    width: 85,
   },
   gap8: {
     gap: 6,
   },
   filterTab: {
-    backgroundColor: "#F4F5F7",
+    backgroundColor: "#FFF",
     borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderWidth: 1,
-    borderColor: Theme.colors.border,
+    borderColor: "#E5E5EA",
   },
   filterTabActive: {
-    backgroundColor: Theme.colors.secondary,
-    borderColor: Theme.colors.secondary,
+    backgroundColor: "#22B378",
+    borderColor: "#22B378",
   },
   filterTabText: {
-    fontSize: 12.5,
-    fontWeight: "600",
-    color: Theme.colors.textSecondary,
+    fontSize: 12,
+    color: "#8E8E93",
   },
   filterTabTextActive: {
     color: "#FFF",
+    fontWeight: "bold",
   },
   datePickerRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    marginVertical: 4,
+    marginVertical: 6,
   },
   datePickerLabel: {
     fontSize: 13,
     fontWeight: "bold",
-    color: Theme.colors.text,
-    width: 80,
+    color: "#1C1C1E",
+    width: 85,
   },
   dateButtonsContainer: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 8,
   },
   dateSelectBtn: {
-    backgroundColor: "#F4F5F7",
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    backgroundColor: "#FFF",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderWidth: 1,
-    borderColor: Theme.colors.border,
+    borderColor: "#E5E5EA",
   },
   dateSelectBtnText: {
-    fontSize: 13,
-    color: Theme.colors.text,
+    fontSize: 12,
+    color: "#1C1C1E",
+    fontWeight: "bold",
   },
   dateSeparator: {
-    marginHorizontal: 8,
-    fontSize: 13,
-    color: Theme.colors.textSecondary,
+    marginHorizontal: 4,
+  },
+  clearFiltersBtnEmpty: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#22B378",
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
+  clearFiltersBtnEmptyText: {
+    color: "#FFF",
+    fontWeight: "bold",
+    fontSize: 14,
   },
   loadingContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    padding: 30,
   },
   loadingText: {
     marginTop: 10,

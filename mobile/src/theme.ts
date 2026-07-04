@@ -2,7 +2,7 @@ export const Theme = {
   colors: {
     primary: "#1E1E2D",      // Brand dark header color (desktop sidebar/appbar)
     secondary: "#22B378",    // Highlight/accent emerald green (desktop active state)
-    background: "#F2F2F7",   // Standard light gray background
+    background: "#FFFFFF",   // Pure white background
     card: "#FFFFFF",         // White card surfaces
     text: "#1C1C1E",         // Dark gray text
     textSecondary: "#636366",// Muted gray text

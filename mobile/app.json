@@ -13,10 +13,8 @@
     "android": {
       "package": "com.mohamedbasith.szsignage",
       "adaptiveIcon": {
-        "backgroundColor": "#1E1E2D",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#010722",
+        "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false
     },
