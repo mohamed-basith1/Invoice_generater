@@ -406,14 +406,13 @@ app.get('/api/invoices/:id/excel', async (req, res) => {
 
     setRightHeaderCell(3, invoice.shop, true, 11);
     
-    // Address / contact details based on shop selection
-    const addressLine1 = invoice.shop === "SZ SIGNAGE" ? "No 16/17, Ground Floor, 1st Cross" : "No 45, Lalbagh Fort Road";
-    const addressLine2 = invoice.shop === "SZ SIGNAGE" ? "J.C. Road, Bangalore - 560002" : "near Mavalli Circle, Bangalore - 560004";
-    const phoneLine = invoice.shop === "SZ SIGNAGE" ? "Phone: +91 9900000000" : "Phone: +91 8800000000";
+    // Address / contact details
+    const addressLine1 = "Ayyampet, Thanjavur - 614201";
+    const phoneLine = "Phone: +91 9790343367";
 
     setRightHeaderCell(4, addressLine1, false, 9.5);
-    setRightHeaderCell(5, addressLine2, false, 9.5);
-    setRightHeaderCell(6, phoneLine, false, 9.5);
+    setRightHeaderCell(5, phoneLine, false, 9.5);
+    setRightHeaderCell(6, "", false, 9.5);
 
     worksheet.getRow(2).height = 20;
     worksheet.getRow(3).height = 18;
