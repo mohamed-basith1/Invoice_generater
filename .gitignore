@@ -1,13 +1,26 @@
-# Root
+# Dependencies
 node_modules/
 
-# Client
-client/node_modules/
+# Build output
+dist/
+dist-electron/
+out/
+release/
 
-# Server
-server/node_modules/
+# Electron Builder
+*.blockmap
 
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-jibriinvoice
-jibriinvoice123
-mongodb+srv://jibriinvoice:jibriinvoice123@cluster0.4u2zmpc.mongodb.net/
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# Environment
+.env
+.env.local
