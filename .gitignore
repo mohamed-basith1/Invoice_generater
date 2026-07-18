@@ -24,3 +24,16 @@ yarn-error.log*
 # Environment
 .env
 .env.local
+
+
+node_modules/
+
+dist/
+dist-react/
+dist-electron/
+
+release/
+out/
+
+*.blockmap
+.DS_Store
