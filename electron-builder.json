@@ -9,7 +9,15 @@
     "target": "AppImage",
     "category": "Utility"
   },
-  "win": {
-    "target": "nsis"
-  }
+ "win": {
+  "target": [
+    {
+      "target": "nsis",
+      "arch": [
+        "x64",
+        "ia32"
+      ]
+    }
+  ]
+}
 }
