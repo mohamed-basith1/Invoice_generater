@@ -1,6 +1,9 @@
 {
   "appId": "com.mohamedbasith.billing_software",
-  "files": ["dist-electron", "dist-react"],
+  "files": [
+    "dist-electron",
+    "dist-react"
+  ],
   "icon": "./desktopIcon.png",
   "mac": {
     "target": "dmg"
@@ -9,15 +12,14 @@
     "target": "AppImage",
     "category": "Utility"
   },
- "win": {
-  "target": [
-    {
-      "target": "nsis",
-      "arch": [
-        "x64",
-        "ia32"
-      ]
-    }
-  ]
-}
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "ia32"
+        ]
+      }
+    ]
+  }
 }
