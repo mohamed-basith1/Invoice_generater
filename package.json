@@ -15,7 +15,7 @@
     "preview": "vite preview",
     "transpile:electron": "tsc --project src/electron/tsconfig.json",
     "dist:mac": "npm run transpile:electron && npm run build && electron-builder --mac --arm64",
-    "dist:win": "npm run transpile:electron && npm run build && electron-builder --win ia32 --publish never",
+    "dist:win": "npm run transpile:electron && npm run build && electron-builder --win --publish never",
     "dist:linux": "npm run transpile:electron && npm run build && electron-builder --linux --x64"
   },
   "dependencies": {
